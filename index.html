@@ -17,7 +17,6 @@ html,body{height:100%;overflow:hidden;background:var(--bg2);color:var(--ink);fon
 body{background:linear-gradient(180deg,var(--bg1) 0%,var(--bg2) 50%,var(--bg3) 100%);user-select:none;-webkit-user-select:none}
 .reset *{transition:none!important;animation:none!important}
 
-/* ---------- Pack (WebGL canvas + a few DOM overlays) ---------- */
 html,body{touch-action:none}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 @keyframes pulse{50%{opacity:.35}}
@@ -28,7 +27,10 @@ html,body{touch-action:none}
 :is([data-state=cut],[data-state=rise],[data-state=reveal],[data-state=ready],[data-state=final]) #shadowRibbon{opacity:0}
 #shadow, #shadowRibbon{position:fixed;left:0;top:0;z-index:1;background:var(--shadow);filter:blur(26px);border-radius:12px;pointer-events:none;transition:opacity .25s}
 
-/* ---------- Confetti (behind everything except the body background) ---------- */
+#bgTint{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:0;transition:opacity .5s ease;
+  background:linear-gradient(180deg,#ffd6e3 0%,#ffc2d4 55%,#ffd2a6 100%)}
+body.warm-bg #bgTint{opacity:1}
+
 #confettiGL{
   position:fixed; inset:0;
   width:100%; height:100%;
@@ -39,7 +41,8 @@ html,body{touch-action:none}
 }
 [data-state=final] #confettiGL{ opacity:1; }
 
-/* the line you trace: colour-cycling neon on a pale band */
+#sparkles{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+
 #cutline{position:fixed;left:0;top:0;z-index:3;height:var(--lineH);margin-top:calc(var(--lineH) / -2);color:var(--line);pointer-events:none;
   background:linear-gradient(90deg,#0000,currentColor 0%,currentColor 100%,#0000);animation:fadeIn .9s ease-out both,hue 5s linear infinite}
 #cutline::after{content:"";position:absolute;inset:-3px 9% -3px 9%;background:currentColor;filter:blur(8px);opacity:.85}
@@ -73,25 +76,33 @@ body:not([data-state=idle]) #tapHint{opacity:0;animation:none}
 [data-state=cut] #flash{animation:flash 1.1s ease-out forwards}
 @keyframes flash{0%{opacity:1;transform:scaleY(.3)}30%{opacity:1;transform:scaleY(1.4)}100%{opacity:0;transform:scaleY(2.6)}}
 
-/* ---------- Card (strict 2.5 : 3.5) ---------- */
 #cardWrap{z-index:1;position:fixed;left:50%;top:50%;width:var(--cw);aspect-ratio:5/7;opacity:0;pointer-events:none;
   transform:translate(calc(-50% + var(--x,0px)),calc(-50% + var(--y,12vh))) scale(var(--s,.45));
   transition:transform 1.4s cubic-bezier(.2,.9,.2,1),opacity .6s}
 
-/* ① the tear — card parks EXACTLY where the pack is (vars set from JS) */
 [data-state=cut] #cardWrap{opacity:1;transition:none;
   --x:var(--startX,0px);--y:var(--startY,26vh);--s:var(--startS,.8)}
-/* ② card rises ▲ while the wrapper drops ▼ — same beat, same length, same scale */
 [data-state=rise] #cardWrap{opacity:1;--x:0px;--y:0px;--s:var(--startS,.8);
   transition:transform var(--riseMs,1500ms) cubic-bezier(.5,.05,.2,1),opacity .35s}
-/* ③ only once it has landed, zoom it up to full size */
 [data-state=reveal] #cardWrap{opacity:1;--x:0px;--y:0px;--s:1;
   transition:transform var(--zoomMs,900ms) cubic-bezier(.2,1.12,.32,1),opacity .35s}
 [data-state=ready] #cardWrap{opacity:1;--x:0px;--y:0px;--s:1}
 [data-state=final] #cardWrap{opacity:1;--x:-24vw;--y:0px;--s:.82;transition-duration:1s}
 
-/* The 3D assembly: edge plate behind, front card in front */
 #card3d{position:relative;width:100%;height:100%;will-change:transform;transform-style:preserve-3d}
+#cardFlip{position:relative;width:100%;height:100%;transform-style:preserve-3d;
+  transition:transform var(--zoomMs,900ms) cubic-bezier(.4,0,.2,1)}
+[data-state=reveal] #cardFlip,
+[data-state=ready]  #cardFlip,
+[data-state=final]  #cardFlip{transform:rotateY(360deg)}
+
+#cardFront{position:absolute;inset:0;transform:translateZ(0.1px);
+  -webkit-backface-visibility:hidden;backface-visibility:hidden}
+#cardBack{position:absolute;inset:0;transform:rotateY(180deg) translateZ(0.1px);
+  -webkit-backface-visibility:hidden;backface-visibility:hidden;
+  border-radius:4.5%;overflow:hidden;box-shadow:0 0 50px #fff8}
+#cardBack canvas{display:block;width:100%;height:100%}
+
 #cardEdge{
   position:absolute; inset:0; border-radius:4.5%;
   background:linear-gradient(180deg,#ffffff 0%,#f6f2ea 100%);
@@ -103,7 +114,54 @@ body:not([data-state=idle]) #tapHint{opacity:0;animation:none}
 #card::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;box-shadow:inset 0 0 14px #fff3}
 #gl{display:block;width:100%;height:100%}
 
-/* ---------- Next button ---------- */
+/* Tight, bright glow burst on the card — no white overlay, only outer glow */
+body.card-flash #card{animation:cardGlow 700ms ease-out forwards}
+@keyframes cardGlow{
+  0%  {box-shadow:0 0 50px #fff8}
+  5%  {box-shadow:
+        0 0 22px 8px #ffffff,
+        0 0 55px 24px rgba(255,255,255,1),
+        0 0 110px 52px rgba(255,250,255,.95),
+        0 0 50px #fff8}
+  18% {box-shadow:
+        0 0 18px 6px #ffffff,
+        0 0 42px 18px rgba(255,255,255,.95),
+        0 0 85px 38px rgba(255,250,255,.75),
+        0 0 50px #fff8}
+  40% {box-shadow:
+        0 0 26px 8px rgba(255,255,255,.85),
+        0 0 60px 22px rgba(255,255,255,.5),
+        0 0 50px #fff8}
+  100%{box-shadow:0 0 50px #fff8}
+}
+
+/* One-shot white twinkle, upper-right of the card face.
+   Lives OUTSIDE #card3d/#cardFlip so it isn't clipped by the 3D container. */
+#twinkle{
+  position:absolute;
+  left:98%;
+  top:2%;
+  width:15%;
+  aspect-ratio:1;
+  pointer-events:none;
+  opacity:0;
+  z-index:50;
+  transform:translate(-50%,-50%) scale(.3);
+  filter:drop-shadow(0 0 8px rgba(255,255,255,1))
+         drop-shadow(0 0 26px rgba(255,255,255,.75))
+         drop-shadow(0 0 60px rgba(255,220,240,.45));
+  will-change:transform,opacity;
+}
+#twinkle svg{display:block;width:100%;height:100%}
+#twinkle.play{animation:twinklePop 500ms cubic-bezier(.2,.9,.2,1) forwards}
+@keyframes twinklePop{
+  0%   {opacity:0;   transform:translate(-50%,-50%) scale(.2) rotate(-12deg)}
+  10%  {opacity:1;   transform:translate(-50%,-50%) scale(1.35) rotate(0deg)}
+  30%  {opacity:1;   transform:translate(-50%,-50%) scale(.85) rotate(12deg)}
+  55%  {opacity:.9;  transform:translate(-50%,-50%) scale(1.10) rotate(24deg)}
+  100% {opacity:0;   transform:translate(-50%,-50%) scale(1.65) rotate(48deg)}
+}
+
 #next{position:fixed;right:max(22px,env(safe-area-inset-right));bottom:max(22px,env(safe-area-inset-bottom));width:64px;height:64px;border-radius:50%;
   border:2px solid #fff;background:#fff;color:var(--accent);cursor:pointer;display:grid;place-items:center;
   box-shadow:0 4px 14px rgba(26,42,106,.35), 0 0 24px #7b8cff99;opacity:0;pointer-events:none;transition:opacity 1s,transform .2s;z-index:30}
@@ -111,20 +169,17 @@ body:not([data-state=idle]) #tapHint{opacity:0;animation:none}
 #next:hover{transform:scale(1.08)} #next:focus-visible,.btn:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
 @keyframes pulse2{50%{box-shadow:0 4px 14px rgba(26,42,106,.35), 0 0 38px #aab4ffcc}}
 
-/* ---------- Final message ---------- */
 #final{position:fixed;right:6vw;top:50%;transform:translateY(-46%);width:min(430px,38vw);opacity:0;pointer-events:none;transition:opacity 1s .6s,transform 1s .6s;z-index:10}
 [data-state=final] #final{opacity:1;pointer-events:auto;transform:translateY(-50%)}
 #final p{font:400 1.08rem/1.65 Fraunces,serif;color:var(--ink);margin-bottom:.9em;text-shadow:0 1px 2px rgba(26,42,106,.12)}
 .row{display:flex;gap:12px;margin-top:1.4em;flex-wrap:wrap}
 
-/* ---------- Scroll cue (shown only when #final clips) ---------- */
 #scrollCue{position:fixed;left:50%;bottom:max(10px,env(safe-area-inset-bottom));width:34px;height:34px;margin-left:-17px;border-radius:50%;
   background:#fffd;color:var(--accent);display:grid;place-items:center;box-shadow:0 2px 10px rgba(26,42,106,.3);
   z-index:11;pointer-events:none;opacity:0;transition:opacity .3s}
 #scrollCue.show{opacity:1;animation:bob 1.4s ease-in-out infinite}
 @keyframes bob{50%{transform:translateY(4px)}}
 
-/* ---------- Rainbow title ---------- */
 #final h1{
   font:700 clamp(2rem,4vw,3.2rem)/1.05 Fraunces,serif;
   margin-bottom:.6em;
@@ -146,7 +201,6 @@ body:not([data-state=idle]) #tapHint{opacity:0;animation:none}
   filter:drop-shadow(0 1px 1px rgba(15, 19, 38, 0.35));
 }
 
-/* ---------- Buttons ---------- */
 .btn{
   font:700 1rem Manrope,sans-serif;
   padding:.85em 1.5em;
@@ -155,7 +209,6 @@ body:not([data-state=idle]) #tapHint{opacity:0;animation:none}
   transition:filter .2s, transform .2s;
 }
 
-/* Filled rainbow — Download card */
 .btn.primary{
   position:relative;
   overflow:hidden;
@@ -180,7 +233,6 @@ body:not([data-state=idle]) #tapHint{opacity:0;animation:none}
   z-index:-1;
 }
 
-/* Rainbow border only — Replay */
 .btn:not(.primary){
   position:relative;
   overflow:hidden;
@@ -208,7 +260,7 @@ body:not([data-state=idle]) #tapHint{opacity:0;animation:none}
   content:"";
   position:absolute;
   inset:3px;
-  background:var(--bg3);
+  background: rgba(235, 244, 255, 0.9);
   border-radius:999px;
   z-index:-1;
 }
@@ -233,7 +285,9 @@ body:not([data-state=idle]) #tapHint{opacity:0;animation:none}
 </head>
 <body data-state="loading">
 
+<div id="bgTint"></div>
 <canvas id="confettiGL" aria-hidden="true"></canvas>
+<canvas id="sparkles" aria-hidden="true"></canvas>
 
 <div id="shadow"></div>
 <div id="shadowRibbon"></div>
@@ -247,8 +301,27 @@ body:not([data-state=idle]) #tapHint{opacity:0;animation:none}
 
 <div id="cardWrap">
   <div id="card3d">
-    <div id="cardEdge"></div>
-    <div id="card"><canvas id="gl"></canvas></div>
+    <div id="cardFlip">
+      <div id="cardFront">
+        <div id="cardEdge"></div>
+        <div id="card"><canvas id="gl"></canvas></div>
+      </div>
+      <div id="cardBack"><canvas id="glBack"></canvas></div>
+    </div>
+  </div>
+  <div id="twinkle" aria-hidden="true">
+    <svg viewBox="-50 -50 100 100">
+      <defs>
+        <radialGradient id="twinkleGlow" cx="0" cy="0" r="50" gradientUnits="userSpaceOnUse">
+          <stop offset="0%"   stop-color="#ffffff" stop-opacity="1"/>
+          <stop offset="30%"  stop-color="#ffffff" stop-opacity="0.55"/>
+          <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <circle cx="0" cy="0" r="50" fill="url(#twinkleGlow)"/>
+      <path d="M 0 -46 Q 4 -4 46 0 Q 4 4 0 46 Q -4 4 -46 0 Q -4 -4 0 -46 Z" fill="#ffffff"/>
+      <circle cx="0" cy="0" r="5" fill="#ffffff"/>
+    </svg>
   </div>
 </div>
 
@@ -273,13 +346,33 @@ body:not([data-state=idle]) #tapHint{opacity:0;animation:none}
 /* =====================================================================
    ✏️ PASTE YOUR IMAGE URLS HERE
    ===================================================================== */
-const PACK_URL = "pack.jpg";
+const PACK_URL      = "pack.jpg";
 const PACK_NORMAL_URL = "pack_normal.jpg";
-const BG_URL   = "card.png";
-const FG_URL   = "";
+const BG_URL        = "card.png";
+const FG_URL        = "";
+const CARD_BACK_URL = "back.png";
 
 /* =====================================================================
-   🎨 APPEARANCE SETTINGS: edit freely, nothing else needs to change
+   🔊 PASTE YOUR SOUND URLS HERE  (leave "" to stay silent)
+   ---------------------------------------------------------------------
+   SFX_TAP_URL      : one-shot. Fires when you tap the pack to open it.
+   SFX_OPEN_URL     : one-shot. Fires the instant the pack tears open.
+   SFX_RISE_URL     : one-shot. Fires when the card rises out of the wrapper.
+   SFX_ZOOM_URL     : one-shot. Fires when the card zooms + flips.
+   SFX_NEXT_URL     : one-shot. Fires when the Next button is tapped.
+   SFX_DOWNLOAD_URL : one-shot. Fires when Download card is tapped.
+   SFX_REPLAY_URL   : one-shot. Fires when Replay is tapped.
+   ===================================================================== */
+const SFX_TAP_URL      = "start.mp3";
+const SFX_OPEN_URL     = "open.mp3";
+const SFX_RISE_URL     = "rise.mp3";
+const SFX_ZOOM_URL     = "2star.mp3";
+const SFX_NEXT_URL     = "click.mp3";
+const SFX_DOWNLOAD_URL = "click.mp3";
+const SFX_REPLAY_URL   = "click.mp3";
+
+/* =====================================================================
+   🎨 APPEARANCE SETTINGS
    ===================================================================== */
 const CONFIG = {
   bgTop:'#b9d6ff', bgMid:'#d9e9ff', bgBottom:'#f2f8ff',
@@ -307,7 +400,6 @@ const CONFIG = {
 
   cardThickness: 5,
 
-  // ─── CARD IRIDESCENCE TUNING ──────────────────────────────
   iridMin:   0.00,
   iridMax:   0.22,
   specMin:   0.00,
@@ -316,13 +408,10 @@ const CONFIG = {
   sweepMax:  0.08,
   tiltLo:    0.05,
   tiltHi:    0.90,
-  // ──────────────────────────────────────────────────────────
 
-  // ─── CONFETTI TUNING ──────────────────────────────────────
-  confettiCount: 90,           // how many pieces
-  confettiSpeed: 1.0,          // multiplier on fall speed — raise for faster
-  confettiSize:  1.0,          // multiplier on piece size
-  // ──────────────────────────────────────────────────────────
+  confettiCount: 90,
+  confettiSpeed: 1.0,
+  confettiSize:  1.0,
 
   holoStrength:1,
   glitter:0,
@@ -341,15 +430,39 @@ function applyConfig(){
 }
 
 /* =====================================================================
-   ⏱️ OPENING TIMING (milliseconds) — tune the three beats here
-   ---------------------------------------------------------------------
-   hold : beat between the tear and the swap (flash + rays play here)
-   rise : card goes UP ▲ and the wrapper goes DOWN ▼, together, for this long
-   zoom : ONLY after the swap has finished, the card grows to full size
+   ⏱️ OPENING TIMING (milliseconds)
    ===================================================================== */
 const OPEN = { hold: 900, rise: 1500, zoom: 900 };
 document.documentElement.style.setProperty('--riseMs', OPEN.rise + 'ms');
 document.documentElement.style.setProperty('--zoomMs', OPEN.zoom + 'ms');
+
+/* =====================================================================
+   🔊 SFX HELPER
+   ===================================================================== */
+const SFX = {
+  tap:      SFX_TAP_URL      ? new Audio(SFX_TAP_URL)      : null,
+  open:     SFX_OPEN_URL     ? new Audio(SFX_OPEN_URL)     : null,
+  rise:     SFX_RISE_URL     ? new Audio(SFX_RISE_URL)     : null,
+  zoom:     SFX_ZOOM_URL     ? new Audio(SFX_ZOOM_URL)     : null,
+  next:     SFX_NEXT_URL     ? new Audio(SFX_NEXT_URL)     : null,
+  download: SFX_DOWNLOAD_URL ? new Audio(SFX_DOWNLOAD_URL) : null,
+  replay:   SFX_REPLAY_URL   ? new Audio(SFX_REPLAY_URL)   : null
+};
+if(SFX.tap){      SFX.tap.preload = 'auto';      SFX.tap.volume = 0.8; }
+if(SFX.open){     SFX.open.preload = 'auto';     SFX.open.volume = 0.9; }
+if(SFX.rise){     SFX.rise.preload = 'auto';     SFX.rise.volume = 0.85; }
+if(SFX.zoom){     SFX.zoom.preload = 'auto';     SFX.zoom.volume = 0.9; }
+if(SFX.next){     SFX.next.preload = 'auto';     SFX.next.volume = 0.8; }
+if(SFX.download){ SFX.download.preload = 'auto'; SFX.download.volume = 0.8; }
+if(SFX.replay){   SFX.replay.preload = 'auto';   SFX.replay.volume = 0.8; }
+
+['tap','open','rise','zoom','next','download','replay'].forEach(k => {
+  if(!SFX[k]) console.info(`[SFX] "${k}" has no URL — silent.`);
+  else SFX[k].addEventListener('error', () => console.warn(`[SFX] Failed to load "${k}" from:`, SFX[k].src));
+});
+
+function sfxStart(a){ if(!a) return; try{ a.currentTime = 0; const p = a.play(); if(p && p.catch) p.catch(()=>{}); }catch(e){} }
+function sfxStop(a){ if(!a) return; try{ a.pause(); a.currentTime = 0; }catch(e){} }
 
 /* ===================================================================== */
 const W = 660, H = 920;
@@ -368,6 +481,103 @@ function updateCue(){
 const setState = s => { document.body.dataset.state = s; updateCue(); };
 const state = () => document.body.dataset.state;
 
+/* =====================================================================
+   ✨ WHITE SHEEN BURST — one-shot, whiteish, diagonal band that crosses
+   the card exactly once, quickly.
+   ===================================================================== */
+let sheenStart = 0, sheenDur = 0, sheenActive = false;
+function triggerSheen(dur = 450){
+  sheenStart = performance.now();
+  sheenDur = dur;
+  sheenActive = true;
+}
+function getSheenState(now){
+  if(!sheenActive) return { burst: 0, pos: 0 };
+  const el = now - sheenStart;
+  if(el >= sheenDur){ sheenActive = false; return { burst: 0, pos: 0 }; }
+  const u = el / sheenDur;
+  return { burst: 1, pos: -0.35 + u * 1.9 };
+}
+
+/* =====================================================================
+   ✨ FLOATING SPARKLES
+   ===================================================================== */
+const sparkles = { canvas:null, ctx:null, particles:[], active:false, opacity:0, drawn:false };
+
+function initSparkles(){
+  const c = $('#sparkles');
+  sparkles.canvas = c;
+  sparkles.ctx = c.getContext('2d');
+  resizeSparkles();
+  const N = 80;
+  for(let i = 0; i < N; i++){
+    sparkles.particles.push({
+      x: Math.random(),
+      y: Math.random(),
+      r: 1.4 + Math.random() * 3.0,
+      vx: (Math.random() - 0.5) * 0.000045,
+      vy: -(0.00002 + Math.random() * 0.00007),
+      twinkle: Math.random() * Math.PI * 2,
+      twinkleSpeed: 0.0015 + Math.random() * 0.0035
+    });
+  }
+}
+function resizeSparkles(){
+  const c = sparkles.canvas;
+  if(!c) return;
+  c.width = innerWidth;
+  c.height = innerHeight;
+}
+function setSparklesActive(on){ sparkles.active = on; }
+
+function tickSparkles(){
+  const { ctx, canvas, particles } = sparkles;
+  if(!ctx) return;
+
+  const target = sparkles.active ? 1 : 0;
+  sparkles.opacity += (target - sparkles.opacity) * 0.06;
+
+  if(sparkles.opacity < 0.003){
+    if(sparkles.drawn){ ctx.clearRect(0, 0, canvas.width, canvas.height); sparkles.drawn = false; }
+    return;
+  }
+  sparkles.drawn = true;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const Wc = canvas.width, Hc = canvas.height;
+  ctx.globalCompositeOperation = 'lighter';
+
+  const scale = Math.min(innerWidth, innerHeight) / 900;
+
+  for(const p of particles){
+    p.x += p.vx * 16;
+    p.y += p.vy * 16;
+    if(p.y < -0.05){ p.y = 1.05; p.x = Math.random(); }
+    if(p.x < -0.05) p.x = 1.05;
+    if(p.x > 1.05) p.x = -0.05;
+
+    p.twinkle += p.twinkleSpeed * 16;
+    const tw = 0.5 + 0.5 * Math.sin(p.twinkle);
+    const a = sparkles.opacity * tw * 0.55;
+    const rr = p.r * (0.8 + tw * 0.6) * scale;
+
+    const px = p.x * Wc;
+    const py = p.y * Hc;
+    const glowR = rr * 5;
+
+    const g = ctx.createRadialGradient(px, py, 0, px, py, glowR);
+    g.addColorStop(0,   `hsla(0, 0%, 98%, ${a})`);
+    g.addColorStop(0.4, `hsla(0, 0%, 90%, ${a * 0.5})`);
+    g.addColorStop(1,   `hsla(0, 0%, 82%, 0)`);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(px, py, glowR, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+/* ===================================================================== */
 function cover(img){
   const c = document.createElement('canvas'); c.width = W; c.height = H;
   const k = Math.max(W/img.width, H/img.height), w = img.width*k, h = img.height*k;
@@ -392,6 +602,24 @@ function phBg(){
   return c;
 }
 function phFg(){ return blank(); }
+function phBack(){
+  const c = blank(), x = c.getContext('2d');
+  const g = x.createRadialGradient(W/2, H/2, 40, W/2, H/2, W);
+  g.addColorStop(0, '#4a5db8');
+  g.addColorStop(1, '#1a2050');
+  x.fillStyle = g; x.fillRect(0,0,W,H);
+  x.strokeStyle = 'rgba(255,255,255,0.14)';
+  for(let i=0;i<6;i++){
+    x.lineWidth = 6 - i*0.5;
+    x.beginPath();
+    x.arc(W/2, H/2, 70 + i*58, 0, Math.PI*2);
+    x.stroke();
+  }
+  x.strokeStyle = 'rgba(255,255,255,0.28)';
+  x.lineWidth = 3;
+  x.beginPath(); x.arc(W/2, H/2, 260, 0, Math.PI*2); x.stroke();
+  return c;
+}
 
 const PFOV = 28;
 let PK = null;
@@ -605,13 +833,11 @@ function layoutUI(){
   $('#hint').style.transform = `translateY(${Math.max(70, ys-innerHeight*.23)}px)`;
   $('#tapHint').style.transform = `translateY(${sy(-P.A/2)+16}px)`;
 
-  // Body shadow (#shadow)
   const sh = $('#shadow').style;
   sh.width = w*.94+'px';
   sh.height = (P.Hb * w)*.98+'px';
   sh.transform = `translate(${sx(-.47)}px,${sy(P.A/2 - P.f)+P.A*w*.06 + P.drop*P.ppu}px)`;
 
-  // Ribbon shadow (#shadowRibbon)
   const shRibbon = $('#shadowRibbon').style;
   shRibbon.width = w*.94+'px';
   shRibbon.height = (P.f * w)*.95+'px';
@@ -621,24 +847,25 @@ function layoutUI(){
   tc.left = ((Math.min(P.org,P.front)+.48)*w)+'px'; tc.width = (state()==='pack' ? Math.abs(fr)*w : 0)+'px';
 }
 
-/* =====================================================================
-   🎯 CARD START-OF-TEAR POSITION — derived from the pack's real on-screen
-   rect, so the card always begins *inside* the pack on any screen size.
-   Writes --startX / --startY / --startS on #cardWrap; the CSS state rules
-   for [data-state=cut] and [data-state=rise] consume them.
-   ===================================================================== */
 function measureCardStart(){
   if(!PK) return;
   const P = PK, cw = $('#cardWrap');
-  const cwPx   = cw.offsetWidth || 1;      // card's layout width in CSS px
-  const packPx = P.ppu;                    // pack's rendered width in CSS px (world width 1 at z=0)
-  // scale so the card matches the pack width (slight inset so no corner peeks)
+  const cwPx   = cw.offsetWidth || 1;
+  const packPx = P.ppu;
   const s      = clamp((packPx / cwPx) * .96, .15, 1.4);
-  const cx     = sx(0);                    // pack centre x  (screen)
-  const cy     = sy(-P.f / 2);             // pack *body* centre y (screen, below the foil seam)
+  const cx     = sx(0);
+  const cy     = sy(-P.f / 2);
   cw.style.setProperty('--startX', (cx - innerWidth  / 2) + 'px');
   cw.style.setProperty('--startY', (cy - innerHeight / 2) + 'px');
   cw.style.setProperty('--startS', s);
+}
+
+function paintBack(){
+  const c = $('#glBack');
+  if(!c || !art || !art.back) return;
+  c.width  = art.back.width;
+  c.height = art.back.height;
+  c.getContext('2d').drawImage(art.back, 0, 0);
 }
 
 /* =====================================================================
@@ -655,7 +882,7 @@ function buildConfetti(){
   cam.position.set(0, 0, 12);
 
   const colors = [0xff4d4d, 0xff9a3c, 0xffd93b, 0x4dd964, 0x3bb8ff, 0x7b5cff, 0xff5cd0];
-  const geo = new THREE.PlaneGeometry(1, 1);   // unit plane, scaled per-piece
+  const geo = new THREE.PlaneGeometry(1, 1);
 
   const pieces = [];
   const COUNT = CONFIG.confettiCount;
@@ -669,7 +896,6 @@ function buildConfetti(){
     });
     const m = new THREE.Mesh(geo, mat);
 
-    // Per-piece size variety
     const sx = (0.10 + Math.random() * 0.08) * CONFIG.confettiSize;
     const sy = (0.18 + Math.random() * 0.14) * CONFIG.confettiSize;
     m.scale.set(sx, sy, 1);
@@ -754,10 +980,9 @@ function tickConfetti(now){
 /* ===================================================================== */
 const clamp01 = v => clamp(v,0,1);
 
-/* ---------- Light rays: burst out of the opened seam once the tear completes ---------- */
 const rc = $('#rays').getContext('2d');
 
-const SPARKLES = Array.from({length: 60}, () => ({
+const SPARKLES_RAY = Array.from({length: 60}, () => ({
   x: (Math.random() - 0.5) * 1.0,
   y: (Math.random() - 0.5) * 10,
   vx: (Math.random() - 0.5) * 4,
@@ -768,7 +993,7 @@ const SPARKLES = Array.from({length: 60}, () => ({
 }));
 
 const RAYS = Array.from({length:46}, (_, i) => ({
-  t: (i + 0.5) / 46,                  // evenly spaced 0→1 along the cut
+  t: (i + 0.5) / 46,
   ang: (Math.random() - 0.5) * 1.0,
   w: 2 + Math.random() * 5,
   len: .2 + Math.random() * .3,
@@ -798,7 +1023,7 @@ function drawRays(now){
     const ox = x0 + segW*b.t;
     const ang = b.ang + Math.sin(t * b.sp + b.ph) * 0.08;
     const len = L*b.len*(.15 + .85*grow);
-    const al = k*b.a*fl*.65; // High brightness
+    const al = k*b.a*fl*.65;
     const spread = len*.09*(.5 + b.a);
     const currentHue = (b.hue + t * 50) % 360;
     for(const s of [1]){
@@ -816,7 +1041,6 @@ function drawRays(now){
     }
   }
 
-  // Hot core & center glow
   const hgt = 3 + 6*k;
   rc.shadowColor = 'rgba(255,255,255,1)'; rc.shadowBlur = 12 + 40*k;
   rc.fillStyle = `rgba(255,255,255,${.9*k})`;
@@ -828,25 +1052,21 @@ function drawRays(now){
   rc.fillStyle = gr; rc.fillRect(mid-200, ys-200, 400, 400);
   rc.globalCompositeOperation = 'source-over';
 
-  // --- Sparkles Burst ---
   const sparkEl = now - P.tCut;
   const sparkProgress = clamp01(sparkEl / 500);
   if(sparkProgress < 1.0) {
     const midX = (x0 + xb) / 2;
     rc.save();
     rc.globalCompositeOperation = 'lighter';
-    for(const sp of SPARKLES) {
+    for(const sp of SPARKLES_RAY) {
       const p = sparkEl * 0.001;
       const px = midX + sp.x * segW + sp.vx * (sparkEl * 0.05);
       const py = ys + sp.vy * (sparkEl * 0.05) + Math.sin(p * 15 + sp.phase) * 5;
       const alpha = (1 - sparkProgress) * (0.5 + 0.5 * Math.sin(p * 20 + sp.phase));
-      
       if(alpha <= 0) continue;
-
       rc.fillStyle = `hsla(${sp.hue}, 100%, 85%, ${alpha})`;
       rc.shadowColor = `hsla(${sp.hue}, 100%, 70%, ${alpha})`;
       rc.shadowBlur = 8;
-      
       rc.beginPath();
       rc.arc(px, py, sp.size, 0, Math.PI * 2);
       rc.fill();
@@ -858,7 +1078,7 @@ function drawRays(now){
 let drag = null, snap = false, tilting = false, lastPt = null, trailLife = 0;
 const tc = $('#trail').getContext('2d');
 
-const TILTABLE_STATES = ['reveal', 'ready', 'final'];
+const TILTABLE_STATES = ['ready', 'final'];
 
 addEventListener('pointerdown', e => {
   if(!PK) return;
@@ -866,6 +1086,7 @@ addEventListener('pointerdown', e => {
   
   if(state() === 'idle'){
     if(!canOpen) return;
+    sfxStart(SFX.tap);
     PK.zT = CONFIG.zoom; PK.cyT = PK.A/2 - PK.f - .1; setState('zoom'); later(() => setState('pack'), 1000); return;
   }
   if(state() === 'pack'){
@@ -911,21 +1132,58 @@ function cut(dir){
   P.front = P.org + dir*Math.max(CONFIG.tearAt, (P.front-P.org)*dir);
   P.tCut = performance.now();
 
-  build3D();
-  measureCardStart();                    // ← card now starts exactly where the pack is
-  setState('cut');                       // ① card parks inside the pack · flash + rays fire
+  sfxStop(SFX.tap);
+  sfxStart(SFX.open);
 
-  /* ② card rises ▲ and wrapper drops ▼ — both start on this exact beat */
+  build3D();
+  measureCardStart();
+  setState('cut');
+
   later(() => {
-    P.tRev = performance.now();          // wrapper starts falling (see tick)
-    setState('rise');                    // card starts rising (CSS transition)
+    P.tRev = performance.now();
+    setState('rise');
+    sfxStart(SFX.rise);   // 🔊 card rises out of the wrapper
   }, OPEN.hold);
 
-  /* ③ only once the swap has finished does the card zoom to full size */
-  later(() => setState('reveal'), OPEN.hold + OPEN.rise);
+  const tReveal = OPEN.hold + OPEN.rise;
+  const tFlash  = tReveal + OPEN.zoom;
+  const FLASH_MS = 1400;
 
-  /* ④ next button */
-  later(() => setState('ready'), OPEN.hold + OPEN.rise + OPEN.zoom + CONFIG.nextButtonDelaySeconds*1000);
+  /* ③ zoom + 3D flip + warm pink/orange background + sparkles */
+  later(() => {
+    sfxStart(SFX.zoom);
+    document.body.classList.add('warm-bg');
+    setSparklesActive(true);
+    setState('reveal');
+  }, tReveal);
+
+  /* ④ flip done — glow burst AND white sheen fire together, once.
+     Twinkle fires when the sheen reaches the upper-right of the card. */
+  const SHEEN_MS = 450;
+  later(() => {
+    triggerSheen(SHEEN_MS);
+
+    later(() => {
+      document.body.classList.add('card-flash');
+
+      const tw = $('#twinkle');
+      if(tw){
+        tw.classList.remove('play');
+        void tw.offsetWidth;
+        tw.classList.add('play');
+      }
+    }, Math.round(SHEEN_MS * 0.92));
+  }, tFlash);
+
+  /* ⑤ flash faded — background back to normal, sparkles stop */
+  later(() => {
+    document.body.classList.remove('card-flash');
+    document.body.classList.remove('warm-bg');
+    setSparklesActive(false);
+  }, tFlash + FLASH_MS);
+
+  /* ⑥ ready */
+  later(() => setState('ready'), tFlash + CONFIG.nextButtonDelaySeconds*1000);
 }
 
 const VERT = `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }`;
@@ -936,6 +1194,8 @@ uniform sampler2D uBg, uFg;
 uniform vec2 uTilt;
 uniform float uTime, uHolo, uGlit, uGloss, uSeed;
 uniform float uIridMin, uIridMax, uSpecMin, uSpecMax, uSweepMin, uSweepMax, uTiltLo, uTiltHi;
+uniform float uSheenBurst;
+uniform float uSheenPos;
 
 vec3 hsv(vec3 c){ vec3 p = abs(fract(c.xxx+vec3(0.,2./3.,1./3.))*6.-3.); return c.z*mix(vec3(1.),clamp(p-1.,0.,1.),c.y); }
 
@@ -999,6 +1259,14 @@ void main(){
     + rainbow * uHolo * iridAmt * m * (1.0 - base)
     + vec3(1.,.97,.9) * spec * specAmt * uGloss * m
     + rainbow * sw * sweepAmt * uGloss;
+
+  if(uSheenBurst > 0.001){
+    float band = exp(-pow((uv.x*.9 + uv.y*.5 - uSheenPos) * 11., 2.));
+    vec3 sheenCol = vec3(1.0, 0.985, 0.95);
+    float core = pow(max(band, 0.0), 1.6);
+    col += sheenCol * core * uSheenBurst * 1.15;
+  }
+
   gl_FragColor = vec4(col, 1.);
 }`;
 
@@ -1016,7 +1284,8 @@ function build3D(){
       uIridMin:{value:CONFIG.iridMin},   uIridMax:{value:CONFIG.iridMax},
       uSpecMin:{value:CONFIG.specMin},   uSpecMax:{value:CONFIG.specMax},
       uSweepMin:{value:CONFIG.sweepMin}, uSweepMax:{value:CONFIG.sweepMax},
-      uTiltLo:{value:CONFIG.tiltLo},     uTiltHi:{value:CONFIG.tiltHi}
+      uTiltLo:{value:CONFIG.tiltLo},     uTiltHi:{value:CONFIG.tiltHi},
+      uSheenBurst:{value:0}, uSheenPos:{value:0}
     },
     vertexShader:VERT, fragmentShader:FRAG
   });
@@ -1034,9 +1303,15 @@ function dispose3D(){
   $('#card3d').style.transform = ''; three = null;
 }
 
-$('#next').addEventListener('click', () => { if(state() === 'ready') setState('final'); });
+$('#next').addEventListener('click', () => {
+  if(state() === 'ready'){
+    sfxStart(SFX.next);
+    setState('final');
+  }
+});
 $('#final').addEventListener('scroll', updateCue, {passive:true});
 $('#dl').addEventListener('click', () => {
+  sfxStart(SFX.download);
   try{
     const c = blank(), x = c.getContext('2d');
     x.drawImage(art.bg,0,0); x.drawImage(art.fg,0,0);
@@ -1044,7 +1319,16 @@ $('#dl').addEventListener('click', () => {
   }catch(err){ alert('Could not export: host the images in the same repo (or on a CORS-enabled server) and try again.'); }
 });
 $('#replay').addEventListener('click', () => {
+  sfxStart(SFX.replay);
   timers.forEach(clearTimeout); timers = [];
+  sfxStop(SFX.open);
+  sfxStop(SFX.rise);
+  document.body.classList.remove('warm-bg');
+  document.body.classList.remove('card-flash');
+  setSparklesActive(false);
+  sparkles.opacity = 0;
+  sheenActive = false;
+  const tw = $('#twinkle'); if(tw) tw.classList.remove('play');
   dispose3D(); tilt.x = tilt.y = target.x = target.y = 0; drag = null; tilting = false;
   canOpen = false;
   Object.assign(PK, {zoom:1, cy:0, zT:1, cyT:0, dir:1, org:0, front:0, orgT:0, frontT:0, dragging:false, cutting:false, fly:0, open:0, drop:0, tRev:0, active:true});
@@ -1057,8 +1341,7 @@ $('#replay').addEventListener('click', () => {
 });
 
 addEventListener('resize', () => {
-  sizeGL(); sizePack(); resizeConfetti(); updateCue();
-  // keep the card's parked position in sync while it is still hidden behind the pack
+  sizeGL(); sizePack(); resizeConfetti(); resizeSparkles(); updateCue();
   if(PK && (state() === 'pack' || state() === 'cut')) measureCardStart();
 });
 
@@ -1075,7 +1358,6 @@ function tick(now){
     if(P.cutting){
       P.fly = clamp01((now-P.tCut-200)/(CONFIG.ribbonFlySeconds*1000)); P.open = 1-Math.pow(1-clamp01((now-P.tCut)/450),3);
     } else if(!P.dragging){ P.front += (P.org-P.front)*.18; }
-    // wrapper fall — same length & smooth easing as the card rise
     if(P.tRev){ const u = clamp01((now-P.tRev)/OPEN.rise); P.drop = u*u*(3-2*u)*P.A*1.8; }
     fu.uDir.value = P.dir; fu.uProg.value = clamp((P.front-P.org)*P.dir,0,1); fu.uFly.value = P.fly;
     const o = clamp01((P.fly-.62)/.38); fu.uOp.value = 1 - o*o*(3-2*o);
@@ -1085,22 +1367,35 @@ function tick(now){
   }
   if(trailLife > 0){ trailLife--; tc.globalCompositeOperation = 'destination-out'; tc.shadowBlur = 0; tc.fillStyle = 'rgba(0,0,0,.14)'; tc.fillRect(0,0,innerWidth,innerHeight); }
   if(three){
-    three.mat.uniforms.uTilt.value.set(tilt.x, tilt.y); three.mat.uniforms.uTime.value = t;
+    const sheen = getSheenState(now);
+    three.mat.uniforms.uSheenBurst.value = sheen.burst;
+    three.mat.uniforms.uSheenPos.value   = sheen.pos;
+    three.mat.uniforms.uTilt.value.set(tilt.x, tilt.y);
+    three.mat.uniforms.uTime.value = t;
     $('#card3d').style.transform = `perspective(900px) rotateY(${tilt.x*CONFIG.tiltDegrees}deg) rotateX(${-tilt.y*CONFIG.tiltDegrees}deg)`;
     three.r.render(three.sc, three.cam);
   }
   if(confetti && state() === 'final'){
     tickConfetti(now);
   }
+  tickSparkles();
 }
 requestAnimationFrame(tick);
 
 (async function init(){
   applyConfig();
   buildConfetti();
-  const [pack, packNormal, bg, fg] = await Promise.all([loadPack(PACK_URL), loadPack(PACK_NORMAL_URL, flatNormal), load(BG_URL, phBg), load(FG_URL, phFg)]);
-  art = {bg, fg};
+  initSparkles();
+  const [pack, packNormal, bg, fg, back] = await Promise.all([
+    loadPack(PACK_URL),
+    loadPack(PACK_NORMAL_URL, flatNormal),
+    load(BG_URL, phBg),
+    load(FG_URL, phFg),
+    load(CARD_BACK_URL, phBack)
+  ]);
+  art = {bg, fg, back};
   buildPack(pack, packNormal);
+  paintBack();
   setState('idle');
   later(() => { canOpen = true; }, 800);
 })();
