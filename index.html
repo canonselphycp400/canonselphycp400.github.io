@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>A Birthday Pack For You</title>
+<title>...?</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,700;1,400&family=Manrope:wght@500;700&display=swap" rel="stylesheet">
 <style>
@@ -113,10 +113,10 @@ body:not([data-state=idle]) #tapHint{opacity:0;animation:none}
 <button id="next" aria-label="Next"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
 
 <section id="final">
-  <h1>Happy Birthday, Camille!</h1>
+    <h1>Happy Birthday, Camille!</h1>
   <p>Congrats on pulling this super duper rare card from this amazing illustrator. It's a one of one, so please take care of it. It seems really strong :O</p>
   <p>I wish you a wonderful birthday surrounded by friends and loved ones. You radiate kindness and joy, like a sunflower. I hope to keep staying beside you and bask in your brightness.</p>
-  <p>I miss you lots, every day... I'm far, so this digital card is all I can give you, but I made it with a precious memory in mind I hope you like it. We have a set now :D</p>
+  <p>I miss you lots, every day... I'm far, so this digital card is all I can give you, but I made it with a precious memory in mind. I hope you like it. We have a set now :D</p>
   <p>Again, have a happy happy birthday!!! Michu</p>
   <p><em>Your Squishufishu, Kyle</em></p>
   <div class="row">
@@ -158,11 +158,11 @@ const CONFIG = {
   cornerCurlSize:.15,        
   cornerCurlRadius:.03,      
   cornerCurlAngle:3,         
-  tearAt:.9,                 
+  tearAt:.7,                 
   ribbonFlySeconds:1.5,      
-  tiltDegrees:10,             
+  tiltDegrees:12,            // visible drag tilt — raise for more, 0 for none
   parallax:0.01,                
-  holoStrength:1,            
+  holoStrength:0.3,            
   glitter:0,                 
   gloss:1,                   
   nextButtonDelaySeconds:2   
@@ -180,7 +180,7 @@ function applyConfig(){
 const W = 660, H = 920;   // 330×460 doubled — exact 1:1 with your art            
 const $ = s => document.querySelector(s);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
-let art, three = null, timers = [], moved = false, askedGyro = false;
+let art, three = null, timers = [];
 const tilt = {x:0, y:0}, target = {x:0, y:0};
 const later = (f, ms) => timers.push(setTimeout(f, ms));
 const setState = s => document.body.dataset.state = s;
@@ -210,7 +210,6 @@ function phBg(){
   return c;
 }
 function phFg(){
-  // flat card — no foreground layer
   return blank();
 }
 
@@ -460,46 +459,50 @@ function layoutUI(){
   tc.left = ((Math.min(P.org,P.front)+.48)*w)+'px'; tc.width = (state()==='pack' ? Math.abs(fr)*w : 0)+'px';
 }
 
-let drag = null, gyroOn = false, snap = false, lastPt = null, trailLife = 0;
-function onOri(e){
-  if(e.gamma == null) return;
-  gyroOn = true; moved = true; target.x = clamp(e.gamma/30,-1,1); target.y = clamp((e.beta-50)/30,-1,1);
-}
-function askGyro(){            
-  if(askedGyro) return; askedGyro = true;
-  const D = window.DeviceOrientationEvent;
-  if(D && D.requestPermission) D.requestPermission().then(r => r==='granted' && addEventListener('deviceorientation', onOri)).catch(()=>{});
-  else addEventListener('deviceorientation', onOri);
-}
+let drag = null, snap = false, tilting = false, lastPt = null, trailLife = 0;
 const tc = $('#trail').getContext('2d');
+
 addEventListener('pointerdown', e => {
-  askGyro();
   if(!PK) return;
-  if(state() === 'idle'){                                           
+  if(state() === 'idle'){
     PK.zT = CONFIG.zoom; PK.cyT = PK.A/2 - PK.f - .1; setState('zoom'); later(() => setState('pack'), 1000); return;
   }
-  if(state() !== 'pack') return;
-  const m = toWorld(e);
-  if(Math.abs(e.clientY - sy(PK.A/2-PK.f)) < 90 && Math.abs(m.x) > .47){      
-    const dir = m.x < 0 ? 1 : -1; drag = {dir}; PK.dir = dir; PK.dragging = true; PK.org = PK.front = -dir*.5; lastPt = {x:e.clientX, y:e.clientY};
+  if(state() === 'pack'){
+    const m = toWorld(e);
+if(Math.abs(e.clientY - sy(PK.A/2-PK.f)) < 150 && Math.abs(m.x) > .32){
+      const dir = m.x < 0 ? 1 : -1; drag = {dir}; PK.dir = dir; PK.dragging = true; PK.org = PK.front = -dir*.5; lastPt = {x:e.clientX, y:e.clientY};
+      return;
+    }
   }
+  // Anywhere else: start tilt-drag
+  tilting = true;
+  snap = false;
+  target.x = e.clientX/innerWidth*2-1;
+  target.y = e.clientY/innerHeight*2-1;
 });
+
 addEventListener('pointermove', e => {
   if(drag){
     const m = toWorld(e), P = PK;
     P.front = clamp(m.x,-.5,.5); if((P.front-P.org)*drag.dir < 0) P.front = P.org;
-    if((P.front-P.org)*drag.dir > CONFIG.tearAt){ cut(drag.dir); return; }         
+    if((P.front-P.org)*drag.dir > CONFIG.tearAt){ cut(drag.dir); return; }
     tc.globalCompositeOperation = 'source-over'; tc.lineCap = 'round'; tc.lineWidth = 45; tc.strokeStyle = 'rgba(255,238,250,.95)'; tc.shadowColor = '#ff7ad9'; tc.shadowBlur = 24;
     tc.beginPath(); tc.moveTo(lastPt.x,lastPt.y); tc.lineTo(e.clientX,e.clientY); tc.stroke(); lastPt = {x:e.clientX, y:e.clientY}; trailLife = 40;
-  } else if(state() !== 'loading'){
-    if(e.pointerType === 'touch' && (e.buttons === 0 || gyroOn)) return;
-    snap = false;
-    moved = true; target.x = e.clientX/innerWidth*2-1; target.y = e.clientY/innerHeight*2-1;
+  } else if(tilting){
+    target.x = e.clientX/innerWidth*2-1;
+    target.y = e.clientY/innerHeight*2-1;
   }
 });
-const endDrag = () => { if(drag){ drag = null; PK.dragging = false; } };   
-const release = e => { endDrag(); if(e.pointerType !== 'mouse' && !gyroOn){ target.x = target.y = 0; moved = true; snap = true; } };   
-addEventListener('pointerup', release); addEventListener('pointercancel', release);
+
+const endDrag = () => { if(drag){ drag = null; PK.dragging = false; } };
+const release = () => {
+  endDrag();
+  tilting = false;
+  target.x = target.y = 0;
+  snap = true;
+};
+addEventListener('pointerup', release);
+addEventListener('pointercancel', release);
 
 function cut(dir){
   if(state() !== 'pack') return;
@@ -564,7 +567,6 @@ void main(){
   float spec = pow(max(dot(vec3(0.,0.,1.), normalize(L+V)), 0.), 30.);
 
   // --- Iridescence ---
-  // Long-wavelength bands (1.8) with an fbm-noise warp, direction flipped 180°.
   float warp = (fbm(uv*2.5 + uTime*0.03) - 0.5) * 0.45;
   float ang = (-(uv.x*.7 + uv.y*.9) + warp)*1.8 + dot(t, vec2(.9,-.7))*1.4 + uTime*.08;
   vec3 rainbow = hsv(vec3(fract(ang), 1.0, 1.0));
@@ -572,7 +574,7 @@ void main(){
   float sw = exp(-pow((uv.x*.8+uv.y*.6 - (.7 + t.x*.7 - t.y*.5))*7., 2.));
   float m = mix(1., .6, fg.a);
 
-  // Calmer iridescence: much lower additive strengths.
+  // Calm iridescence.
   vec3 col = base
     + rainbow * uHolo * .10 * m * (1.0 - base)
     + vec3(1.,.97,.9) * spec * .3 * uGloss * m
@@ -593,7 +595,7 @@ function build3D(){
   const geo = new THREE.PlaneGeometry(2,2), sc = new THREE.Scene(), cam = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
   sc.add(new THREE.Mesh(geo, mat));
   three = {r, sc, cam, mat, geo, tBg, tFg};
-  moved = false; sizeGL();
+  sizeGL();
 }
 function sizeGL(){ if(three){ const c = $('#card'); three.r.setSize(c.clientWidth, c.clientHeight, false); } }
 function dispose3D(){
@@ -614,7 +616,7 @@ $('#dl').addEventListener('click', () => {
 });
 $('#replay').addEventListener('click', () => {
   timers.forEach(clearTimeout); timers = [];
-  dispose3D(); moved = false; tilt.x = tilt.y = target.x = target.y = 0; drag = null;
+  dispose3D(); tilt.x = tilt.y = target.x = target.y = 0; drag = null; tilting = false;
   Object.assign(PK, {zoom:1, cy:0, zT:1, cyT:0, dir:1, org:0, front:0, orgT:0, frontT:0, dragging:false, cutting:false, fly:0, open:0, drop:0, tRev:0, active:true});
   setCam(); tc.clearRect(0,0,innerWidth,innerHeight);
   document.body.classList.add('reset');          
@@ -629,9 +631,10 @@ const T0 = performance.now();
 const clamp01 = v => clamp(v,0,1);
 function tick(now){
   requestAnimationFrame(tick);
-  const t = (now - T0)/1000, st = state();
-  if(!moved){ target.x = Math.sin(t*.8)*.4; target.y = Math.cos(t*.6)*.3; }   
-  const k = snap ? .22 : .08; tilt.x += (target.x - tilt.x)*k; tilt.y += (target.y - tilt.y)*k;
+  const t = (now - T0)/1000;
+  const k = snap ? .22 : .08;
+  tilt.x += (target.x - tilt.x)*k;
+  tilt.y += (target.y - tilt.y)*k;
   if(PK && PK.active){
     const P = PK, fu = P.fu;
     P.zoom += (P.zT-P.zoom)*.09; P.cy += (P.cyT-P.cy)*.09; setCam();
