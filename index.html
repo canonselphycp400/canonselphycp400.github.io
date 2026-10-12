@@ -215,7 +215,7 @@ body:not([data-state=idle]) #tapHint{opacity:0;animation:none}
   [data-state=final] #cardWrap{--x:0px;--y:-23vh;--s:.5}
   #final{right:0;left:0;top:auto;bottom:0;width:100%;padding:0 7vw max(20px,env(safe-area-inset-bottom));transform:translateY(20px);max-height:50vh;overflow:auto}
   [data-state=final] #final{transform:none}
-  #final h1{font-size:1.9rem} #final p{font-size:1rem;line-height:1.5}
+  #final h1{font-size:1.9rem} #final p{font-size:1.0rem;line-height:1.5}
   #next{width:56px;height:56px}
 }
 @media (prefers-reduced-motion:reduce){#pack,#hint,#cutline,.btn.primary::before,.btn:not(.primary)::before{animation:none}}
@@ -334,6 +334,7 @@ const W = 660, H = 920;
 const $ = s => document.querySelector(s);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 let art, three = null, timers = [];
+let canOpen = false;
 let confetti = null;
 const tilt = {x:0, y:0}, target = {x:0, y:0};
 const later = (f, ms) => timers.push(setTimeout(f, ms));
@@ -706,32 +707,37 @@ const clamp01 = v => clamp(v,0,1);
 const rc = $('#rays').getContext('2d');
 
 const SPARKLES = Array.from({length: 60}, () => ({
-  x: (Math.random() - 0.5) * 1.0, // relative offset along the seam
-  y: (Math.random() - 0.5) * 10,  // initial upward/outward burst velocity
+  x: (Math.random() - 0.5) * 1.0,
+  y: (Math.random() - 0.5) * 10,
   vx: (Math.random() - 0.5) * 4,
-  vy: -2 - Math.random() * 6,     // shoots upward/outward
+  vy: -2 - Math.random() * 6,
   size: 1 + Math.random() * 2.5,
   phase: Math.random() * Math.PI * 2,
   hue: Math.random() * 360
 }));
 
-const RAYS = Array.from({length:46}, () => ({
-  t: Math.random(), ang: (Math.random()-.5)*1.9, w: 2+Math.random()*5,
-  len: .2+Math.random()*.3, a: .35+Math.random()*.25,
-  ph: Math.random()*6.28, sp: .8+Math.random()*1.6,
-  hue: Math.random()*360
+const RAYS = Array.from({length:46}, (_, i) => ({
+  t: (i + 0.5) / 46,                  // evenly spaced 0→1 along the cut
+  ang: (Math.random() - 0.5) * 1.0,
+  w: 2 + Math.random() * 5,
+  len: .2 + Math.random() * .3,
+  a: .35 + Math.random() * .65,
+  ph: Math.random() * 6.28,
+  sp: .8 + Math.random() * 1.6,
+  hue: Math.random() * 360
 }));
+
 function drawRays(now){
   const P = PK;
   rc.clearRect(0, 0, rc.canvas.width, rc.canvas.height);
-  if(!P.cutting) return;                             // no rays while tearing
+  if(!P.cutting) return;
   const el = now - P.tCut;
-  const grow = 1 - Math.pow(1 - clamp01(el/320), 3);       // rays shoot outward and brighten
-  const fade = 1 - clamp01((el-380)/520);                  // then vanish quickly
+  const grow = 1 - Math.pow(1 - clamp01(el/320), 3);
+  const fade = 1 - clamp01((el-380)/520);
   const k = grow * fade * fade;
   if(k < .003) return;
   const ys = sy(P.A/2-P.f)+4, t = now*.001;
-  const xa = sx(P.org), xb = sx(P.org + P.dir);            // the full opened seam
+  const xa = sx(P.org), xb = sx(P.org + P.dir);
   const x0 = Math.min(xa,xb), segW = Math.abs(xb-xa), mid = (xa+xb)/2;
   const L = Math.max(rc.canvas.width, rc.canvas.height)*.20;
 
@@ -739,18 +745,18 @@ function drawRays(now){
   for(const b of RAYS){
     const fl = .75 + .25*Math.sin(t*b.sp*3 + b.ph);
     const ox = x0 + segW*b.t;
-    const ang = b.ang + Math.sin(t * b.sp + b.ph) * 0.08; // Small organic sway
+    const ang = b.ang + Math.sin(t * b.sp + b.ph) * 0.08;
     const len = L*b.len*(.15 + .85*grow);
-    const al = k*b.a*fl*.65;
+    const al = k*b.a*fl*.65; // High brightness
     const spread = len*.09*(.5 + b.a);
     const currentHue = (b.hue + t * 50) % 360;
-    for(const s of [1,-1]){
+for(const s of [1]){
       const aa = s === 1 ? al : al*.55;
       rc.save(); rc.translate(ox, ys); rc.rotate(ang); rc.scale(1, s);
       const g = rc.createLinearGradient(0, 0, 0, -len);
-      g.addColorStop(0,   `hsla(${currentHue}, 90%, 75%, ${aa})`);
-      g.addColorStop(.4, `hsla(${(currentHue + 60)%360}, 90%, 65%, ${aa*.5})`);
-      g.addColorStop(1,   `hsla(${(currentHue + 120)%360}, 90%, 50%, 0)`);
+      g.addColorStop(0,   `hsla(${currentHue}, 100%, 85%, ${aa})`);
+      g.addColorStop(.4, `hsla(${(currentHue + 50)%360}, 100%, 75%, ${aa*.7})`);
+      g.addColorStop(1,   `hsla(${(currentHue + 100)%360}, 100%, 60%, 0)`);
       rc.fillStyle = g;
       rc.beginPath();
       rc.moveTo(-b.w*.5, 0); rc.lineTo(b.w*.5, 0);
@@ -758,7 +764,8 @@ function drawRays(now){
       rc.closePath(); rc.fill(); rc.restore();
     }
   }
-  // hot white core along the slit + soft rainbow glow at its centre
+
+  // Hot core & center glow
   const hgt = 3 + 6*k;
   rc.shadowColor = 'rgba(255,255,255,1)'; rc.shadowBlur = 12 + 40*k;
   rc.fillStyle = `rgba(255,255,255,${.9*k})`;
@@ -772,7 +779,7 @@ function drawRays(now){
 
   // --- Sparkles Burst ---
   const sparkEl = now - P.tCut;
-  const sparkProgress = clamp01(sparkEl / 500); // fades out completely after 500ms
+  const sparkProgress = clamp01(sparkEl / 500);
   if(sparkProgress < 1.0) {
     const midX = (x0 + xb) / 2;
     rc.save();
@@ -800,12 +807,14 @@ function drawRays(now){
 let drag = null, snap = false, tilting = false, lastPt = null, trailLife = 0;
 const tc = $('#trail').getContext('2d');
 
-// States where the card is fully out of the pack and can be tilted.
 const TILTABLE_STATES = ['reveal', 'ready', 'final'];
 
 addEventListener('pointerdown', e => {
   if(!PK) return;
+  if(state() === 'loading') return;
+  
   if(state() === 'idle'){
+    if(!canOpen) return; // Prevent clicking before prompt appears
     PK.zT = CONFIG.zoom; PK.cyT = PK.A/2 - PK.f - .1; setState('zoom'); later(() => setState('pack'), 1000); return;
   }
   if(state() === 'pack'){
@@ -979,10 +988,12 @@ $('#dl').addEventListener('click', () => {
 $('#replay').addEventListener('click', () => {
   timers.forEach(clearTimeout); timers = [];
   dispose3D(); tilt.x = tilt.y = target.x = target.y = 0; drag = null; tilting = false;
+  canOpen = false;
   Object.assign(PK, {zoom:1, cy:0, zT:1, cyT:0, dir:1, org:0, front:0, orgT:0, frontT:0, dragging:false, cutting:false, fly:0, open:0, drop:0, tRev:0, active:true});
-  setCam(); tc.clearRect(0,0,innerWidth,innerHeight); rc.clearRect(0,0,innerWidth,innerHeight);
+  setCam(); tc.clearRect(0,0,innerWidth,innerHeight); rc.clearRect(0,0,rc.canvas.width,rc.canvas.height);
   document.body.classList.add('reset');
   setState('idle');
+  later(() => { canOpen = true; }, 800);
   void document.body.offsetWidth;
   requestAnimationFrame(() => document.body.classList.remove('reset'));
 });
@@ -1015,7 +1026,6 @@ function tick(now){
     $('#card3d').style.transform = `perspective(900px) rotateY(${tilt.x*CONFIG.tiltDegrees}deg) rotateX(${-tilt.y*CONFIG.tiltDegrees}deg)`;
     three.r.render(three.sc, three.cam);
   }
-  // Confetti only renders in final state; CSS opacity handles the fade.
   if(confetti && state() === 'final'){
     tickConfetti(now);
   }
@@ -1029,6 +1039,7 @@ requestAnimationFrame(tick);
   art = {bg, fg};
   buildPack(pack, packNormal);
   setState('idle');
+  later(() => { canOpen = true; }, 800);
 })();
 </script>
 </body>
