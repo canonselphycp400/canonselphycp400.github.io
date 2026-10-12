@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>A Birthday Pack For You</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,700;1,400&family=Manrope:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --accent:#4d45d1; --ink:#23265a; --glow:#7b8cff; --bg1:#b9d6ff; --bg2:#d9e9ff; --bg3:#f2f8ff; --hint:#5d6a92; --line:#3dff9a; --lineH:12px; --shadow:#2a3a8a66; --cardBorder:#f5d27a;
+  --cw:min(78vw,calc(64vh*5/7));            
+  --pw:min(58vw,calc(58vh*.55),300px);       
+}
+@supports (height:1dvh){:root{--cw:min(78vw,calc(64dvh*5/7));--pw:min(58vw,calc(58dvh*.55),300px)}}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%;overflow:hidden;background:var(--bg2);color:var(--ink);font-family:Manrope,system-ui,sans-serif;overscroll-behavior:none}
+body{background:linear-gradient(180deg,var(--bg1) 0%,var(--bg2) 50%,var(--bg3) 100%);user-select:none;-webkit-user-select:none}
+.reset *{transition:none!important;animation:none!important}
+
+/* ---------- Pack (WebGL canvas + a few DOM overlays) ---------- */
+html,body{touch-action:none}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes pulse{50%{opacity:.35}}
+@keyframes hue{to{filter:hue-rotate(360deg)}}
+#packGL{position:fixed;inset:0;width:100%;height:100%;z-index:2;pointer-events:none;transition:opacity .6s}
+[data-state=loading] #packGL,[data-state=loading] #shadow{opacity:0}
+:is([data-state=reveal],[data-state=ready],[data-state=final]) #shadow{opacity:0}
+#shadow{position:fixed;left:0;top:0;z-index:1;background:var(--shadow);filter:blur(26px);border-radius:12px;pointer-events:none;transition:opacity .25s}
+/* the line you trace: colour-cycling neon on a pale band */
+#cutline{position:fixed;left:0;top:-30;z-index:3;height:var(--lineH);margin-top:calc(var(--lineH) / -2);color:var(--line);pointer-events:none;
+  background:linear-gradient(90deg,#0000,currentColor 0%,currentColor 100%,#0000);animation:fadeIn .9s ease-out both,hue 5s linear infinite}
+#cutline::after{content:"";position:absolute;inset:-3px 9% -3px 9%;background:currentColor;filter:blur(8px);opacity:.85}
+#cutline::before{content:"";position:absolute;left:-10;right:-10;top:-30px;bottom:-20px;background:linear-gradient(transparent,#ffffffa0,transparent);
+  -webkit-mask-image:linear-gradient(90deg,#0000,#000 12%,#000 88%,#0000);mask-image:linear-gradient(90deg,#0000,#000 12%,#000 88%,#0000)}
+body.nohue #cutline{animation:fadeIn .9s ease-out both}
+#trace{
+  position:absolute; z-index:5;
+  top:50%; transform:translateY(-50%);
+  height:var(--lineH);
+  font-size:var(--lineH);
+  border-radius:99px;
+  background:#fff;
+  box-shadow:
+    0 0 0.4em 0        #fff,
+    0 0 1em   0.15em   #fff,
+    0 0 2em   0.5em    rgba(255,255,255,.85),
+    0 0 3.5em 1em      rgba(180,205,255,.65);
+  width:0;
+}
+
+#hint,#tapHint{position:fixed;left:0;right:0;top:0;z-index:3;text-align:center;pointer-events:none;color:var(--hint);text-shadow:0 0 14px #fff;
+  font:500 clamp(1.3rem,5.5vw,1.9rem) Manrope,sans-serif;letter-spacing:.02em;animation:fadeIn .9s ease-out both,pulse 2s ease-in-out .9s infinite}
+#tapHint{animation:fadeIn 1s ease-out .6s both,pulse 2s ease-in-out 1.6s infinite}
+body:not([data-state=pack]) :is(#hint,#cutline){opacity:0;animation:none;transition:opacity .2s}
+body:not([data-state=idle]) #tapHint{opacity:0;animation:none}
+#trail{position:fixed;inset:0;z-index:4;pointer-events:none}
+#flash{position:fixed;top:0;height:10px;margin-top:-5px;background:#fff;pointer-events:none;z-index:3;opacity:0;
+  box-shadow:0 0 40px 14px #fff,0 0 90px 34px #bcd0ff}
+[data-state=cut] #flash{animation:flash 1.1s ease-out forwards}
+@keyframes flash{0%{opacity:1;transform:scaleY(.3)}30%{opacity:1;transform:scaleY(1.4)}100%{opacity:0;transform:scaleY(2.6)}}
+
+/* ---------- Card (strict 2.5 : 3.5) ---------- */
+#cardWrap{z-index:1;position:fixed;left:50%;top:50%;width:var(--cw);aspect-ratio:5/7;opacity:0;pointer-events:none;
+  transform:translate(calc(-50% + var(--x,0px)),calc(-50% + var(--y,12vh))) scale(var(--s,.45));
+  transition:transform 1.4s cubic-bezier(.2,.9,.2,1),opacity .6s}
+:is([data-state=reveal],[data-state=ready]) #cardWrap{opacity:1;--y:0px;--s:1}
+[data-state=cut] #cardWrap{opacity:1;transition:none}
+[data-state=final] #cardWrap{opacity:1;--s:.82;--x:-24vw;--y:0px;transition-duration:1s}
+#card{position:relative;width:100%;height:100%;border-radius:4.5%;overflow:hidden;will-change:transform;
+  box-shadow:0 30px 60px #1a2a6a77,0 0 50px #fff8;transform-style:preserve-3d}
+#card::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;box-shadow:inset 0 0 14px #fff3}
+#gl{display:block;width:100%;height:100%}
+
+/* ---------- Next button ---------- */
+#next{position:fixed;right:max(22px,env(safe-area-inset-right));bottom:max(22px,env(safe-area-inset-bottom));width:64px;height:64px;border-radius:50%;
+  border:2px solid #fff;background:#fff;color:var(--accent);cursor:pointer;display:grid;place-items:center;
+  box-shadow:0 0 24px #7b8cff99;opacity:0;pointer-events:none;transition:opacity 1s,transform .2s;z-index:30}
+[data-state=ready] #next{opacity:1;pointer-events:auto;animation:pulse2 2s ease-in-out infinite}
+#next:hover{transform:scale(1.08)} #next:focus-visible,.btn:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+@keyframes pulse2{50%{box-shadow:0 0 38px #aab4ffcc}}
+
+/* ---------- Final message ---------- */
+#final{position:fixed;right:6vw;top:50%;transform:translateY(-46%);width:min(430px,38vw);opacity:0;pointer-events:none;transition:opacity 1s .6s,transform 1s .6s;z-index:10}
+[data-state=final] #final{opacity:1;pointer-events:auto;transform:translateY(-50%)}
+#final h1{font:700 clamp(2rem,4vw,3.2rem)/1.05 Fraunces,serif;color:var(--accent);margin-bottom:.6em}
+#final p{font:400 1.08rem/1.65 Fraunces,serif;color:var(--ink);margin-bottom:.9em}
+.row{display:flex;gap:12px;margin-top:1.4em;flex-wrap:wrap}
+.btn{font:700 1rem Manrope,sans-serif;padding:.85em 1.5em;border-radius:999px;border:2px solid var(--accent);cursor:pointer;color:var(--accent);background:transparent}
+.btn.primary{background:var(--accent);color:#fff}
+.btn:hover{filter:brightness(1.12)}
+@media (max-width:799px){
+  [data-state=final] #cardWrap{--x:0px;--y:-23vh;--s:.5}
+  #final{right:0;left:0;top:auto;bottom:0;width:100%;padding:0 7vw max(20px,env(safe-area-inset-bottom));transform:translateY(20px);max-height:50vh;overflow:auto}
+  [data-state=final] #final{transform:none}
+  #final h1{font-size:1.9rem} #final p{font-size:1rem;line-height:1.5}
+  #next{width:56px;height:56px}
+}
+@media (prefers-reduced-motion:reduce){#pack,#hint,#cutline{animation:none}}
+</style>
+</head>
+<body data-state="loading">
+
+<div id="shadow"></div>
+<canvas id="packGL" aria-label="Booster pack. Tap to open, then trace the line."></canvas>
+<canvas id="trail"></canvas>
+<div id="flash"></div>
+<div id="cutline"><i id="trace"></i></div>
+<p id="hint">Trace line to open</p>
+<p id="tapHint">Tap to open</p>
+
+<div id="cardWrap"><div id="card"><canvas id="gl"></canvas></div></div>
+
+<button id="next" aria-label="Next"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+
+<section id="final">
+  <h1>Happy Birthday, Camille!</h1>
+  <p>Congrats on pulling this super duper rare card from this amazing illustrator. It's a one of one, so please take care of it. It seems really strong :O</p>
+  <p>I wish you a wonderful birthday surrounded by friends and loved ones. You radiate kindness and joy, like a sunflower. I hope to keep staying beside you and bask in your brightness.</p>
+  <p>I miss you lots, every day... I'm far, so this digital card is all I can give you, but I made it with a precious memory in mind I hope you like it. We have a set now :D</p>
+  <p>Again, have a happy happy birthday!!! Michu</p>
+  <p><em>Your Squishufishu, Kyle</em></p>
+  <div class="row">
+    <button class="btn primary" id="dl">Download card</button>
+    <button class="btn" id="replay">Replay</button>
+  </div>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* =====================================================================
+   ✏️ PASTE YOUR IMAGE URLS HERE 
+   ===================================================================== */
+const PACK_URL = "pack.jpg";   
+const PACK_NORMAL_URL = "pack_normal.jpg";
+const BG_URL   = "card.png";   
+const FG_URL   = "";   
+
+/* =====================================================================
+   🎨 APPEARANCE SETTINGS: edit freely, nothing else needs to change
+   ===================================================================== */
+const CONFIG = {
+  bgTop:'#b9d6ff', bgMid:'#d9e9ff', bgBottom:'#f2f8ff',
+  accent:'#4d45d1',          
+  textColor:'#23265a',       
+  hintColor:'#5d6a92',       
+  lineColor:'#3dff9a',       
+  lineCycleHue:true,         
+  lineThickness:12,           
+  cardBorder:'#f5d27a',      
+  packShadow:'#2a3a8a66',    
+  tapText:'Tap to open',
+  traceText:'Trace line to open',
+  packWidthVw:.58,           
+  packMaxWidthPx:300,        
+  zoom:1.3,                  
+  packSheen:.18,  
+  normalStrength: 0.4,       
+  cornerCurlSize:.15,        
+  cornerCurlRadius:.03,      
+  cornerCurlAngle:3,         
+  tearAt:.9,                 
+  ribbonFlySeconds:1.5,      
+  tiltDegrees:10,             
+  parallax:0.01,                
+  holoStrength:1,            
+  glitter:0,                 
+  gloss:1,                   
+  nextButtonDelaySeconds:2   
+};
+function applyConfig(){
+  const r = document.documentElement.style, C = CONFIG;
+  r.setProperty('--bg1',C.bgTop); r.setProperty('--bg2',C.bgMid); r.setProperty('--bg3',C.bgBottom);
+  r.setProperty('--accent',C.accent); r.setProperty('--ink',C.textColor); r.setProperty('--hint',C.hintColor);
+  r.setProperty('--line',C.lineColor); r.setProperty('--lineH',C.lineThickness+'px'); r.setProperty('--shadow',C.packShadow); r.setProperty('--cardBorder',C.cardBorder);
+  $('#hint').textContent = C.traceText; $('#tapHint').textContent = C.tapText;
+  if(!C.lineCycleHue) document.body.classList.add('nohue');
+}
+
+/* ===================================================================== */
+const W = 660, H = 920;   // 330×460 doubled — exact 1:1 with your art            
+const $ = s => document.querySelector(s);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+let art, three = null, timers = [], moved = false, askedGyro = false;
+const tilt = {x:0, y:0}, target = {x:0, y:0};
+const later = (f, ms) => timers.push(setTimeout(f, ms));
+const setState = s => document.body.dataset.state = s;
+const state = () => document.body.dataset.state;
+
+function cover(img){
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const k = Math.max(W/img.width, H/img.height), w = img.width*k, h = img.height*k;
+  c.getContext('2d').drawImage(img, (W-w)/2, (H-h)/2, w, h);
+  return c;
+}
+function load(url, fallback){
+  return new Promise(res => {
+    if(!url) return res(fallback());
+    const i = new Image(); i.crossOrigin = 'anonymous';
+    i.onload = () => res(cover(i));
+    i.onerror = () => { console.warn('Could not load', url); res(fallback()); };
+    i.src = url;
+  });
+}
+const blank = () => { const c = document.createElement('canvas'); c.width = W; c.height = H; return c; };
+function phBg(){
+  const c = blank(), x = c.getContext('2d'), g = x.createLinearGradient(0,0,W,H);
+  g.addColorStop(0,'#1b2a6b'); g.addColorStop(.55,'#6b3fa0'); g.addColorStop(1,'#ff8fb1');
+  x.fillStyle = g; x.fillRect(0,0,W,H);
+  for(let i=0;i<120;i++){ x.fillStyle = `rgba(255,255,255,${Math.random()*.6})`; x.beginPath(); x.arc(Math.random()*W,Math.random()*H,Math.random()*4+1,0,7); x.fill(); }
+  return c;
+}
+function phFg(){
+  // flat card — no foreground layer
+  return blank();
+}
+
+const PFOV = 28;
+let PK = null;
+function rr(x,a,b,w,h,r){ x.beginPath(); x.moveTo(a+r,b); x.arcTo(a+w,b,a+w,b+h,r); x.arcTo(a+w,b+h,a,b+h,r); x.arcTo(a,b+h,a,b,r); x.arcTo(a,b,a+w,b,r); x.closePath(); }
+function phPack(){                                   
+  const c = document.createElement('canvas'); c.width = 550; c.height = 1000; const x = c.getContext('2d');
+  
+  x.fillStyle = '#7ed92b'; x.fillRect(0,0,550,1000);
+
+  x.strokeStyle = 'rgba(255,255,255,0.18)'; x.lineWidth = 4;
+  for(let row=0; row<8; row++){
+    for(let col=0; col<4; col++){
+      let cx = 70 + col*140 + (row%2)*70, cy = 90 + row*130;
+      x.beginPath(); x.arc(cx, cy, 35, 0, 7); x.stroke();
+      x.beginPath(); x.arc(cx, cy, 10, 0, 7); x.stroke();
+      x.beginPath(); x.moveTo(cx-35, cy); x.lineTo(cx+35, cy); x.stroke();
+    }
+  }
+
+  x.fillStyle = '#b3c6d3'; x.fillRect(0, 132, 550, 12);
+  x.fillStyle = '#0055ff'; x.fillRect(0, 138, 550, 4);
+
+  x.fillStyle = '#ffde00'; x.textAlign = 'center'; x.shadowColor = '#3366cc'; x.shadowBlur = 4;
+  x.font = '900 42px sans-serif'; x.fillText('Pokémon', 275, 70);
+  x.shadowBlur = 0;
+  x.fillStyle = '#e60012'; x.beginPath(); x.roundRect(175, 80, 200, 24, 4); x.fill();
+  x.fillStyle = '#fff'; x.font = '700 12px sans-serif'; x.fillText('TRADING CARD GAME', 275, 96);
+  x.font = '600 24px sans-serif'; x.strokeStyle = '#0055ff'; x.lineWidth=4; x.strokeText('Pocket', 275, 122); x.fillText('Pocket', 275, 122);
+
+  x.shadowColor = '#0006'; x.shadowBlur = 12;
+  x.fillStyle = '#222'; x.beginPath(); x.roundRect(140, 480, 370, 80, 10); x.fill();
+  x.shadowBlur = 0;
+  x.fillStyle = '#0055ff'; x.beginPath(); x.roundRect(145, 485, 360, 70, 6); x.fill();
+  
+  x.fillStyle = '#fff'; x.font = '900 56px sans-serif';
+  x.strokeStyle = '#000'; x.lineWidth = 8;
+  x.strokeText('PROMO', 330, 542); x.fillText('PROMO', 330, 542);
+
+  x.translate(160, 510); x.rotate(-0.25);
+  x.fillStyle = '#111'; x.beginPath(); x.roundRect(-70, -100, 140, 200, 8); x.fill(); 
+  x.fillStyle = '#00aaef'; x.beginPath(); x.roundRect(-65, -95, 130, 190, 6); x.fill(); 
+  x.strokeStyle = '#fff'; x.lineWidth = 4; x.strokeRect(-55, -85, 110, 170); 
+  x.fillStyle = '#fff'; x.beginPath(); x.arc(0, 0, 40, 0, 7); x.fill(); 
+  x.fillStyle = '#d00'; x.beginPath(); x.arc(0, 0, 40, Math.PI, 7); x.fill(); 
+  x.fillStyle = '#fff'; x.beginPath(); x.arc(0, 0, 14, 0, 7); x.fill();
+  x.strokeStyle = '#000'; x.lineWidth = 3; x.beginPath(); x.arc(0, 0, 14, 0, 7); x.stroke(); x.beginPath(); x.arc(0, 0, 40, 0, 7); x.stroke(); x.beginPath(); x.moveTo(-40,0); x.lineTo(40,0); x.stroke();
+  x.resetTransform();
+
+  x.shadowColor = '#0004'; x.shadowBlur = 8;
+  x.fillStyle = '#eaffb3'; x.beginPath(); x.roundRect(240, 580, 220, 50, 25); x.fill();
+  x.shadowBlur = 0;
+  x.strokeStyle = '#5ec200'; x.lineWidth = 4; x.stroke();
+  x.fillStyle = '#fff'; x.strokeStyle = '#102a6b'; x.lineWidth = 6;
+  x.font = '900 34px sans-serif'; 
+  x.strokeText('BDAY', 350, 617); x.fillText('BDAY', 350, 617);
+
+  return c;
+}
+function loadPack(url){
+  return new Promise(res => {
+    if(!url) return res(phPack());
+    const i = new Image(); i.crossOrigin = 'anonymous';
+    i.onload = () => { 
+      const c = document.createElement('canvas'); 
+      const w = i.naturalWidth, h = i.naturalHeight;
+      c.width = w; c.height = h; 
+      const x = c.getContext('2d'); 
+      rr(x, 0, 0, w, h, w * 0.03); 
+      x.clip();
+      x.drawImage(i,0,0); 
+      res(c); 
+    };
+    i.onerror = () => { console.warn('Could not load', url); res(phPack()); };
+    i.src = url;
+  });
+}
+const SHEEN = `uniform float uSheen;
+float sweep(vec2 t){ return pow(max(0., sin((t.x*.9 + t.y*.5 - uTime*.3)*6.2832)), 16.); }
+vec3 foil(float s){
+  float t = .5 + .5*sin(6.2832*s);
+  vec3 cool = vec3(.78,.83,.92);
+  vec3 warm = vec3(1.00,.97,.88);
+  return mix(cool, warm, t);
+}`;
+const FV = `uniform float uF,uDir,uProg,uFly,uCorner,uR,uSlope;
+varying vec2 vUv; varying float vE; varying float vA; varying float vU;
+mat3 rx(float a){ float c=cos(a),s=sin(a); return mat3(1.,0.,0., 0.,c,s, 0.,-s,c); }
+mat3 ry(float a){ float c=cos(a),s=sin(a); return mat3(c,0.,-s, 0.,1.,0., s,0.,c); }
+mat3 rz(float a){ float c=cos(a),s=sin(a); return mat3(c,s,0., -s,c,0., 0.,0.,1.); }
+void main(){
+  vUv = uv; vec3 p = position;
+  const float PI = 3.14159;
+  vec2 n = normalize(vec2(uDir,-uSlope));
+  float u = dot(p.xy - vec2(-uDir*.5, uF), n);
+  float prog = clamp(uProg*1.5, 0., 1.);
+  float U = uCorner * smoothstep(0., 1., prog) * (1. + 2.*uFly), a = U-u;
+  vA = a; vU = U;
+  vec3 q = p; vE = 0.;
+  if(a > 0.){
+    float ph = a/uR, ud, z;
+    if(ph < PI){ ud = U-uR*sin(ph); z = -uR*(1.-cos(ph)); } else { ud = U+(a-PI*uR); z = -2.*uR; }
+    q = vec3(p.xy + n*(ud-u), z); vE = clamp(a/(uR*.5),0.,1.);
+  }
+  float th = 1.2*(.5+.8*uFly), k = max(th/uF, 1e-3), ph2 = k*p.y;
+  vec3 r = vec3(p.x + uDir*.25*((1.-cos(ph2))/k), sin(ph2)/k, -(1.-cos(ph2))/k);
+  q = mix(q, r, smoothstep(0.,.25,uFly));
+  float e = 1.-pow(1.-uFly,3.), w = uFly*(1.-.3*uFly);
+  q.z += .12*w*sin(q.x*7.+uFly*9.); q.y += .05*w*sin(q.x*5.-uFly*7.+1.);
+  q = rz(-.9*uDir*e)*(ry(.9*uDir*e)*(rx(-.8*e)*q));
+  q += vec3(uDir*.55*e, 1.5*e-.4*uFly*uFly, .9*e);
+  gl_Position = projectionMatrix*modelViewMatrix*vec4(q,1.);
+}`;
+const FF = `precision highp float;
+uniform sampler2D uTex; uniform sampler2D uNorm; uniform float uNormInt;
+uniform float uOp,uTime,uR; 
+varying vec2 vUv; varying float vE; varying float vA; varying float vU;
+${SHEEN}
+void main(){
+  vec2 t = vec2(vUv.x, .862+vUv.y*.138); 
+  vec4 c = texture2D(uTex,t); 
+  vec3 foilC = foil(vUv.x*1.5+uTime*.15);
+  
+  vec3 rawNorm = texture2D(uNorm, t).rgb * 2.0 - 1.0;
+  vec3 nMap = normalize(mix(vec3(0.,0.,1.), rawNorm, uNormInt));
+  
+  vec3 lightDir = normalize(vec3(-0.5, 0.5, 1.0));
+  float light = max(dot(nMap, lightDir), 0.0);
+  float flatLight = max(dot(vec3(0.,0.,1.), lightDir), 0.0);
+  float finalLight = mix(0.75, 1.0, light / flatLight);
+  
+  float PI = 3.14159;
+  float shadow = 1.0;
+  float highlight = 0.0;
+  
+  float peel = smoothstep(0., uR*1.5, vU);
+  float hingeDark = 1.0 - 0.55 * peel; 
+  
+  if(vA <= 0.) {
+    shadow = mix(1.0, hingeDark, smoothstep(uR*3.0, 0., -vA));
+  } else {
+    float rollAngle = min(vA/uR, PI);
+    shadow = mix(hingeDark, 1.0, sin(rollAngle)); 
+    highlight = pow(sin(rollAngle), 3.0) * 0.45 * peel;
+  }
+
+  shadow *= finalLight;
+
+  float backMix = smoothstep(PI*uR - 0.005, PI*uR + 0.005, vA);
+  
+  vec3 frontCol = c.rgb * shadow + highlight;
+  frontCol = mix(frontCol, foilC, smoothstep(.07,0.,vUv.y)*.9*vE);
+
+  vec3 backCol = mix(vec3(.82,.85,.93), foilC, .55)*(.8+.2*sin(vUv.x*60.)) * shadow + highlight;
+  
+  vec2 distortedT = t + nMap.xy * 0.08;
+  vec3 col = mix(frontCol, backCol, backMix) + sweep(distortedT) * uSheen * (1.0 - backMix);
+  
+  gl_FragColor = vec4(col, c.a*uOp);
+}`;
+const BV = `uniform float uOpen,uHb,uTime,uD; varying vec2 vUv; varying float vPuff;
+void main(){
+  vUv = uv; vec3 p = position;
+  float ax = p.x*2.;
+  
+  vPuff = smoothstep(0.10, 0.22, uv.y) * smoothstep(0.98, 0.90, uv.y);
+  p.z += .045*(1.-ax*ax)*vPuff;                                  
+  
+  p.x *= (uD - p.z) / uD;
+  
+  float rim = smoothstep(.16,0.,(1.-uv.y)*uHb)*uOpen;                    
+  p.x *= 1.+.03*rim; p.z += rim*(.06+.05*sin(p.x*10.+1.)+.03*sin(p.x*23.-uTime*.8));
+  gl_Position = projectionMatrix*modelViewMatrix*vec4(p,1.);
+}`;
+const BF = `precision highp float;
+uniform sampler2D uTex; uniform sampler2D uNorm; uniform float uNormInt;
+uniform float uOpen,uHb,uTime; varying vec2 vUv; varying float vPuff;
+${SHEEN}
+void main(){
+  vec2 t = vec2(vUv.x, vUv.y*.862); 
+  vec4 c = texture2D(uTex,t);
+  
+  vec3 rawNorm = texture2D(uNorm, t).rgb * 2.0 - 1.0;
+  vec3 nMap = normalize(mix(vec3(0.,0.,1.), rawNorm, uNormInt)); 
+  
+  vec3 lightDir = normalize(vec3(-0.5, 0.5, 1.0));
+  float light = max(dot(nMap, lightDir), 0.0);
+  float flatLight = max(dot(vec3(0.,0.,1.), lightDir), 0.0);
+  float finalLight = mix(0.75, 1.0, light / flatLight);
+  
+  float edgeShadow = (1.-.28*pow(abs(vUv.x*2.-1.),3.) * vPuff);
+  vec3 col = c.rgb * edgeShadow * finalLight;
+  
+  col = mix(col, foil(vUv.x*1.5+uTime*.15), smoothstep(.025,0.,(1.-vUv.y)*uHb)*uOpen*.9);
+  
+  vec2 distortedT = t + nMap.xy * 0.08; 
+  col += sweep(distortedT) * uSheen;
+  
+  gl_FragColor = vec4(col, c.a);
+}`;
+function buildPack(c, cNorm){
+  const A = c.height/c.width, f = .138*A, Hb = .862*A;
+  const r = new THREE.WebGLRenderer({canvas:$('#packGL'), antialias:true, alpha:true}); r.setClearColor(0,0); r.setPixelRatio(Math.min(devicePixelRatio,2));
+  
+  const tex = new THREE.CanvasTexture(c); tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false;
+  const texN = new THREE.CanvasTexture(cNorm); texN.minFilter = THREE.LinearFilter; texN.generateMipmaps = false;
+  
+  const sc = new THREE.Scene(), cam = new THREE.PerspectiveCamera(PFOV,1,.01,50);
+  
+  const bu = {uTex:{value:tex}, uNorm:{value:texN}, uNormInt:{value:CONFIG.normalStrength}, uTime:{value:0}, uOpen:{value:0}, uHb:{value:Hb}, uSheen:{value:CONFIG.packSheen}, uD:{value:10.0}};
+  const fu = {uTex:{value:tex}, uNorm:{value:texN}, uNormInt:{value:CONFIG.normalStrength}, uTime:{value:0}, uF:{value:f}, uDir:{value:1}, uProg:{value:0}, uFly:{value:0}, uOp:{value:1}, uSheen:{value:CONFIG.packSheen}, uCorner:{value:CONFIG.cornerCurlSize}, uR:{value:CONFIG.cornerCurlRadius}, uSlope:{value:CONFIG.cornerCurlAngle}};
+  
+  const body = new THREE.Mesh(new THREE.PlaneGeometry(1,Hb,24,40), new THREE.ShaderMaterial({uniforms:bu, vertexShader:BV, fragmentShader:BF, transparent:true}));
+  const g = new THREE.PlaneGeometry(1,f,128,32); g.translate(0,f/2,0);
+  const foil = new THREE.Mesh(g, new THREE.ShaderMaterial({uniforms:fu, vertexShader:FV, fragmentShader:FF, transparent:true, side:THREE.DoubleSide}));
+  body.frustumCulled = foil.frustumCulled = false; foil.position.y = A/2 - f; body.position.y = -f/2;
+  sc.add(body, foil);
+  PK = {r, sc, cam, A, f, body, foil, bu, fu, zoom:1, cy:0, zT:1, cyT:0, dir:1, org:0, front:0, orgT:0, frontT:0, dragging:false,
+        cutting:false, tCut:0, tRev:0, fly:0, open:0, drop:0, wpx:1, ppu:1, active:true};
+  sizePack();
+}
+function setCam(){ 
+  const P = PK; P.ppu = P.wpx*P.zoom; const d = innerHeight/P.ppu/2/Math.tan(PFOV*Math.PI/360);
+  P.cam.position.set(0,P.cy,d); P.cam.lookAt(0,P.cy,0); P.cam.aspect = innerWidth/innerHeight; P.cam.updateProjectionMatrix(); 
+  if(P.bu) P.bu.uD.value = d;
+}
+function sizePack(){
+  const tr = $('#trail'); tr.width = innerWidth; tr.height = innerHeight;
+  if(!PK) return;
+  PK.r.setSize(innerWidth, innerHeight, false); PK.wpx = Math.min(CONFIG.packWidthVw*innerWidth, CONFIG.packWidthVw*innerHeight/PK.A, CONFIG.packMaxWidthPx); setCam();
+}
+const sx = x => innerWidth/2 + x*PK.ppu, sy = y => innerHeight/2 - (y-PK.cy)*PK.ppu;      
+const toWorld = e => ({x:(e.clientX-innerWidth/2)/PK.ppu, y:PK.cy-(e.clientY-innerHeight/2)/PK.ppu});
+function layoutUI(){                                 
+  const P = PK, ys = sy(P.A/2-P.f)+4, w = P.ppu;
+  const cl = $('#cutline').style; cl.width = w*1+'px'; cl.transform = `translate(${sx(-.5)}px,${ys}px)`;
+  const fl = $('#flash').style;
+  fl.left = sx(-.5)+'px'; fl.width = w+'px'; fl.top = ys+'px';
+  $('#hint').style.transform = `translateY(${Math.max(70, ys-innerHeight*.23)}px)`;
+  $('#tapHint').style.transform = `translateY(${sy(-P.A/2)+16}px)`;
+  const sh = $('#shadow').style;
+  sh.width = w*.94+'px';
+  sh.height = P.A*w*.98+'px';
+  sh.transform = `translate(${sx(-.47)}px,${sy(P.A/2)+P.A*w*.06 + P.drop*P.ppu}px)`;
+  const fr = (P.front-P.org), tc = $('#trace').style;
+  tc.left = ((Math.min(P.org,P.front)+.48)*w)+'px'; tc.width = (state()==='pack' ? Math.abs(fr)*w : 0)+'px';
+}
+
+let drag = null, gyroOn = false, snap = false, lastPt = null, trailLife = 0;
+function onOri(e){
+  if(e.gamma == null) return;
+  gyroOn = true; moved = true; target.x = clamp(e.gamma/30,-1,1); target.y = clamp((e.beta-50)/30,-1,1);
+}
+function askGyro(){            
+  if(askedGyro) return; askedGyro = true;
+  const D = window.DeviceOrientationEvent;
+  if(D && D.requestPermission) D.requestPermission().then(r => r==='granted' && addEventListener('deviceorientation', onOri)).catch(()=>{});
+  else addEventListener('deviceorientation', onOri);
+}
+const tc = $('#trail').getContext('2d');
+addEventListener('pointerdown', e => {
+  askGyro();
+  if(!PK) return;
+  if(state() === 'idle'){                                           
+    PK.zT = CONFIG.zoom; PK.cyT = PK.A/2 - PK.f - .1; setState('zoom'); later(() => setState('pack'), 1000); return;
+  }
+  if(state() !== 'pack') return;
+  const m = toWorld(e);
+  if(Math.abs(e.clientY - sy(PK.A/2-PK.f)) < 90 && Math.abs(m.x) > .47){      
+    const dir = m.x < 0 ? 1 : -1; drag = {dir}; PK.dir = dir; PK.dragging = true; PK.org = PK.front = -dir*.5; lastPt = {x:e.clientX, y:e.clientY};
+  }
+});
+addEventListener('pointermove', e => {
+  if(drag){
+    const m = toWorld(e), P = PK;
+    P.front = clamp(m.x,-.5,.5); if((P.front-P.org)*drag.dir < 0) P.front = P.org;
+    if((P.front-P.org)*drag.dir > CONFIG.tearAt){ cut(drag.dir); return; }         
+    tc.globalCompositeOperation = 'source-over'; tc.lineCap = 'round'; tc.lineWidth = 45; tc.strokeStyle = 'rgba(255,238,250,.95)'; tc.shadowColor = '#ff7ad9'; tc.shadowBlur = 24;
+    tc.beginPath(); tc.moveTo(lastPt.x,lastPt.y); tc.lineTo(e.clientX,e.clientY); tc.stroke(); lastPt = {x:e.clientX, y:e.clientY}; trailLife = 40;
+  } else if(state() !== 'loading'){
+    if(e.pointerType === 'touch' && (e.buttons === 0 || gyroOn)) return;
+    snap = false;
+    moved = true; target.x = e.clientX/innerWidth*2-1; target.y = e.clientY/innerHeight*2-1;
+  }
+});
+const endDrag = () => { if(drag){ drag = null; PK.dragging = false; } };   
+const release = e => { endDrag(); if(e.pointerType !== 'mouse' && !gyroOn){ target.x = target.y = 0; moved = true; snap = true; } };   
+addEventListener('pointerup', release); addEventListener('pointercancel', release);
+
+function cut(dir){
+  if(state() !== 'pack') return;
+  const P = PK; drag = null; P.dragging = false; P.dir = dir; P.cutting = true; P.front = P.org + dir*Math.max(CONFIG.tearAt, (P.front-P.org)*dir); P.tCut = performance.now();
+  const cw = $('#cardWrap'), cutS = sy(P.A/2-P.f), s0 = P.ppu*.9/cw.offsetWidth, top = cutS - P.A*P.ppu*.04;
+  build3D();
+  cw.style.setProperty('--s', s0); cw.style.setProperty('--x', '0px');
+  cw.style.setProperty('--y', (top + cw.offsetHeight*s0/2 - innerHeight/2)+'px');
+  setState('cut');
+  later(() => { P.tRev = performance.now(); }, 1000);
+  later(() => {
+    ['--x','--y','--s'].forEach(p => cw.style.removeProperty(p));
+    setState('reveal');
+  }, 1000 + 1300);
+  later(() => setState('ready'), 1000 + 1300 + 1400 + CONFIG.nextButtonDelaySeconds*1000);
+}
+
+const VERT = `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }`;
+const FRAG = `
+precision highp float;
+varying vec2 vUv;
+uniform sampler2D uBg, uFg;
+uniform vec2 uTilt;
+uniform float uTime, uPar, uHolo, uGlit, uGloss;
+
+vec3 hsv(vec3 c){ vec3 p = abs(fract(c.xxx+vec3(0.,2./3.,1./3.))*6.-3.); return c.z*mix(vec3(1.),clamp(p-1.,0.,1.),c.y); }
+
+// --- Value noise + fbm for the organic wavy warp ---
+float hash(vec2 p){ p = fract(p*vec2(123.34,456.21)); p += dot(p,p+45.32); return fract(p.x*p.y); }
+float noise(vec2 p){
+  vec2 i = floor(p), f = fract(p);
+  f = f*f*(3.0-2.0*f);
+  float a = hash(i), b = hash(i+vec2(1,0)), c = hash(i+vec2(0,1)), d = hash(i+vec2(1,1));
+  return mix(mix(a,b,f.x), mix(c,d,f.x), f.y);
+}
+float fbm(vec2 p){
+  float v = 0.0, a = 0.5;
+  for(int i=0;i<4;i++){ v += a*noise(p); p *= 2.0; a *= 0.5; }
+  return v;
+}
+
+vec4 fgAt(vec2 u){
+  vec4 c = texture2D(uFg, clamp(u,0.,1.));
+  c.a *= step(0.,u.x)*step(u.x,1.)*step(0.,u.y)*step(u.y,1.);
+  return c;
+}
+void main(){
+  vec2 uv = vUv, t = uTilt;
+  vec2 cuv = (uv-.5)*1.0+.5;
+  vec2 buv = cuv + t*vec2(.022,-.022)*uPar;
+  vec2 fuv = cuv - t*vec2(.034,-.034)*uPar;
+  vec3 bg = texture2D(uBg, buv).rgb;
+  vec4 fg = fgAt(fuv);
+  float sh = fgAt(fuv + vec2(.012,-.016) + t*.02).a * (1.-fg.a);
+  bg *= 1. - .4*sh;
+  vec3 base = mix(bg, fg.rgb, fg.a);
+
+  // Flat card: specular uses a flat normal so it doesn't emboss the artwork.
+  vec3 V = normalize(vec3(-t.x*.5, t.y*.5, 1.));
+  vec2 lp = vec2(.5 + t.x*.6, .5 - t.y*.6);
+  vec3 L = normalize(vec3(lp-uv, .35));
+  float spec = pow(max(dot(vec3(0.,0.,1.), normalize(L+V)), 0.), 30.);
+
+  // --- Iridescence ---
+  // Long-wavelength bands (1.8) with an fbm-noise warp, direction flipped 180°.
+  float warp = (fbm(uv*2.5 + uTime*0.03) - 0.5) * 0.45;
+  float ang = (-(uv.x*.7 + uv.y*.9) + warp)*1.8 + dot(t, vec2(.9,-.7))*1.4 + uTime*.08;
+  vec3 rainbow = hsv(vec3(fract(ang), 1.0, 1.0));
+
+  float sw = exp(-pow((uv.x*.8+uv.y*.6 - (.7 + t.x*.7 - t.y*.5))*7., 2.));
+  float m = mix(1., .6, fg.a);
+
+  // Calmer iridescence: much lower additive strengths.
+  vec3 col = base
+    + rainbow * uHolo * .10 * m * (1.0 - base)
+    + vec3(1.,.97,.9) * spec * .3 * uGloss * m
+    + rainbow * sw * .06 * uGloss;
+  gl_FragColor = vec4(col, 1.);
+}`;
+
+function build3D(){
+  const canvas = $('#gl');
+  const r = new THREE.WebGLRenderer({canvas, antialias:true});
+  r.setPixelRatio(Math.min(devicePixelRatio, 2));
+  const tex = c => { const t = new THREE.CanvasTexture(c); t.minFilter = THREE.LinearFilter; t.generateMipmaps = false; return t; };
+  const tBg = tex(art.bg), tFg = tex(art.fg);
+  const mat = new THREE.ShaderMaterial({
+    uniforms:{uBg:{value:tBg}, uFg:{value:tFg}, uTilt:{value:new THREE.Vector2()}, uTime:{value:0}, uPar:{value:CONFIG.parallax}, uHolo:{value:CONFIG.holoStrength}, uGlit:{value:CONFIG.glitter}, uGloss:{value:CONFIG.gloss}},
+    vertexShader:VERT, fragmentShader:FRAG
+  });
+  const geo = new THREE.PlaneGeometry(2,2), sc = new THREE.Scene(), cam = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+  sc.add(new THREE.Mesh(geo, mat));
+  three = {r, sc, cam, mat, geo, tBg, tFg};
+  moved = false; sizeGL();
+}
+function sizeGL(){ if(three){ const c = $('#card'); three.r.setSize(c.clientWidth, c.clientHeight, false); } }
+function dispose3D(){
+  if(!three) return;
+  three.geo.dispose(); three.mat.dispose(); three.tBg.dispose(); three.tFg.dispose();
+  three.r.dispose(); three.r.forceContextLoss();
+  const old = $('#gl'); old.replaceWith(old.cloneNode());   
+  $('#card').style.transform = ''; three = null;
+}
+
+$('#next').addEventListener('click', () => { if(state() === 'ready') setState('final'); });
+$('#dl').addEventListener('click', () => {
+  try{
+    const c = blank(), x = c.getContext('2d');
+    x.drawImage(art.bg,0,0); x.drawImage(art.fg,0,0);     
+    c.toBlob(b => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'birthday-card.png'; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); }, 'image/png');
+  }catch(err){ alert('Could not export: host the images in the same repo (or on a CORS-enabled server) and try again.'); }
+});
+$('#replay').addEventListener('click', () => {
+  timers.forEach(clearTimeout); timers = [];
+  dispose3D(); moved = false; tilt.x = tilt.y = target.x = target.y = 0; drag = null;
+  Object.assign(PK, {zoom:1, cy:0, zT:1, cyT:0, dir:1, org:0, front:0, orgT:0, frontT:0, dragging:false, cutting:false, fly:0, open:0, drop:0, tRev:0, active:true});
+  setCam(); tc.clearRect(0,0,innerWidth,innerHeight);
+  document.body.classList.add('reset');          
+  setState('idle');
+  void document.body.offsetWidth;
+  requestAnimationFrame(() => document.body.classList.remove('reset'));
+});
+
+addEventListener('resize', () => { sizeGL(); sizePack(); });
+
+const T0 = performance.now();
+const clamp01 = v => clamp(v,0,1);
+function tick(now){
+  requestAnimationFrame(tick);
+  const t = (now - T0)/1000, st = state();
+  if(!moved){ target.x = Math.sin(t*.8)*.4; target.y = Math.cos(t*.6)*.3; }   
+  const k = snap ? .22 : .08; tilt.x += (target.x - tilt.x)*k; tilt.y += (target.y - tilt.y)*k;
+  if(PK && PK.active){
+    const P = PK, fu = P.fu;
+    P.zoom += (P.zT-P.zoom)*.09; P.cy += (P.cyT-P.cy)*.09; setCam();
+    if(P.cutting){                                   
+      P.fly = clamp01((now-P.tCut-200)/(CONFIG.ribbonFlySeconds*1000)); P.open = 1-Math.pow(1-clamp01((now-P.tCut)/450),3);
+    } else if(!P.dragging){ P.front += (P.org-P.front)*.18; }
+    if(P.tRev){ const u = clamp01((now-P.tRev)/1100); P.drop = u*u*P.A*1.8; }
+    fu.uDir.value = P.dir; fu.uProg.value = clamp((P.front-P.org)*P.dir,0,1); fu.uFly.value = P.fly;
+    const o = clamp01((P.fly-.62)/.38); fu.uOp.value = 1 - o*o*(3-2*o);
+    P.bu.uOpen.value = P.open; P.bu.uTime.value = fu.uTime.value = t; P.body.position.y = -P.f/2 - P.drop;
+    layoutUI(); P.r.render(P.sc, P.cam);
+    if(P.tRev && now-P.tRev > 1300){ P.active = false; P.r.clear(); }   
+  }
+  if(trailLife > 0){ trailLife--; tc.globalCompositeOperation = 'destination-out'; tc.shadowBlur = 0; tc.fillStyle = 'rgba(0,0,0,.14)'; tc.fillRect(0,0,innerWidth,innerHeight); }
+  if(three){
+    three.mat.uniforms.uTilt.value.set(tilt.x, tilt.y); three.mat.uniforms.uTime.value = t;
+    $('#card').style.transform = `perspective(900px) rotateY(${tilt.x*CONFIG.tiltDegrees}deg) rotateX(${-tilt.y*CONFIG.tiltDegrees}deg)`;
+    three.r.render(three.sc, three.cam);
+  }
+}
+requestAnimationFrame(tick);
+
+(async function init(){
+  applyConfig();
+  const [pack, packNormal, bg, fg] = await Promise.all([loadPack(PACK_URL), loadPack(PACK_NORMAL_URL), load(BG_URL, phBg), load(FG_URL, phFg)]);
+  art = {bg, fg};
+  buildPack(pack, packNormal);
+  setState('idle');
+})();
+</script>
+</body>
+</html>
