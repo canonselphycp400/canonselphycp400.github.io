@@ -23,9 +23,10 @@ html,body{touch-action:none}
 @keyframes pulse{50%{opacity:.35}}
 @keyframes hue{to{filter:hue-rotate(360deg)}}
 #packGL{position:fixed;inset:0;width:100%;height:100%;z-index:2;pointer-events:none;transition:opacity .6s}
-[data-state=loading] #packGL,[data-state=loading] #shadow{opacity:0}
+[data-state=loading] #packGL,[data-state=loading] :is(#shadow,#shadowRibbon){opacity:0}
 :is([data-state=reveal],[data-state=ready],[data-state=final]) #shadow{opacity:0}
-#shadow{position:fixed;left:0;top:0;z-index:1;background:var(--shadow);filter:blur(26px);border-radius:12px;pointer-events:none;transition:opacity .25s}
+:is([data-state=cut],[data-state=rise],[data-state=reveal],[data-state=ready],[data-state=final]) #shadowRibbon{opacity:0}
+#shadow, #shadowRibbon{position:fixed;left:0;top:0;z-index:1;background:var(--shadow);filter:blur(26px);border-radius:12px;pointer-events:none;transition:opacity .25s}
 
 /* ---------- Confetti (behind everything except the body background) ---------- */
 #confettiGL{
@@ -76,9 +77,18 @@ body:not([data-state=idle]) #tapHint{opacity:0;animation:none}
 #cardWrap{z-index:1;position:fixed;left:50%;top:50%;width:var(--cw);aspect-ratio:5/7;opacity:0;pointer-events:none;
   transform:translate(calc(-50% + var(--x,0px)),calc(-50% + var(--y,12vh))) scale(var(--s,.45));
   transition:transform 1.4s cubic-bezier(.2,.9,.2,1),opacity .6s}
-:is([data-state=reveal],[data-state=ready]) #cardWrap{opacity:1;--y:0px;--s:1}
-[data-state=cut] #cardWrap{opacity:1;transition:none}
-[data-state=final] #cardWrap{opacity:1;--s:.82;--x:-24vw;--y:0px;transition-duration:1s}
+
+/* ① the tear — card parks EXACTLY where the pack is (vars set from JS) */
+[data-state=cut] #cardWrap{opacity:1;transition:none;
+  --x:var(--startX,0px);--y:var(--startY,26vh);--s:var(--startS,.8)}
+/* ② card rises ▲ while the wrapper drops ▼ — same beat, same length, same scale */
+[data-state=rise] #cardWrap{opacity:1;--x:0px;--y:0px;--s:var(--startS,.8);
+  transition:transform var(--riseMs,1500ms) cubic-bezier(.5,.05,.2,1),opacity .35s}
+/* ③ only once it has landed, zoom it up to full size */
+[data-state=reveal] #cardWrap{opacity:1;--x:0px;--y:0px;--s:1;
+  transition:transform var(--zoomMs,900ms) cubic-bezier(.2,1.12,.32,1),opacity .35s}
+[data-state=ready] #cardWrap{opacity:1;--x:0px;--y:0px;--s:1}
+[data-state=final] #cardWrap{opacity:1;--x:-24vw;--y:0px;--s:.82;transition-duration:1s}
 
 /* The 3D assembly: edge plate behind, front card in front */
 #card3d{position:relative;width:100%;height:100%;will-change:transform;transform-style:preserve-3d}
@@ -226,6 +236,7 @@ body:not([data-state=idle]) #tapHint{opacity:0;animation:none}
 <canvas id="confettiGL" aria-hidden="true"></canvas>
 
 <div id="shadow"></div>
+<div id="shadowRibbon"></div>
 <canvas id="packGL" aria-label="Booster pack. Tap to open, then trace the line."></canvas>
 <canvas id="trail"></canvas>
 <canvas id="rays" aria-hidden="true"></canvas>
@@ -328,6 +339,17 @@ function applyConfig(){
   $('#hint').textContent = C.traceText; $('#tapHint').textContent = C.tapText;
   if(!C.lineCycleHue) document.body.classList.add('nohue');
 }
+
+/* =====================================================================
+   ⏱️ OPENING TIMING (milliseconds) — tune the three beats here
+   ---------------------------------------------------------------------
+   hold : beat between the tear and the swap (flash + rays play here)
+   rise : card goes UP ▲ and the wrapper goes DOWN ▼, together, for this long
+   zoom : ONLY after the swap has finished, the card grows to full size
+   ===================================================================== */
+const OPEN = { hold: 900, rise: 1500, zoom: 900 };
+document.documentElement.style.setProperty('--riseMs', OPEN.rise + 'ms');
+document.documentElement.style.setProperty('--zoomMs', OPEN.zoom + 'ms');
 
 /* ===================================================================== */
 const W = 660, H = 920;
@@ -558,7 +580,7 @@ function buildPack(c, cNorm){
   const foil = new THREE.Mesh(g, new THREE.ShaderMaterial({uniforms:fu, vertexShader:FV, fragmentShader:FF, transparent:true, side:THREE.DoubleSide}));
   body.frustumCulled = foil.frustumCulled = false; foil.position.y = A/2 - f; body.position.y = -f/2;
   sc.add(body, foil);
-  PK = {r, sc, cam, A, f, body, foil, bu, fu, zoom:1, cy:0, zT:1, cyT:0, dir:1, org:0, front:0, orgT:0, frontT:0, dragging:false,
+  PK = {r, sc, cam, A, f, Hb, body, foil, bu, fu, zoom:1, cy:0, zT:1, cyT:0, dir:1, org:0, front:0, orgT:0, frontT:0, dragging:false,
         cutting:false, tCut:0, tRev:0, fly:0, open:0, drop:0, wpx:1, ppu:1, active:true};
   sizePack();
 }
@@ -582,12 +604,41 @@ function layoutUI(){
   fl.left = sx(-.5)+'px'; fl.width = w+'px'; fl.top = ys+'px';
   $('#hint').style.transform = `translateY(${Math.max(70, ys-innerHeight*.23)}px)`;
   $('#tapHint').style.transform = `translateY(${sy(-P.A/2)+16}px)`;
+
+  // Body shadow (#shadow)
   const sh = $('#shadow').style;
   sh.width = w*.94+'px';
-  sh.height = P.A*w*.98+'px';
-  sh.transform = `translate(${sx(-.47)}px,${sy(P.A/2)+P.A*w*.06 + P.drop*P.ppu}px)`;
+  sh.height = (P.Hb * w)*.98+'px';
+  sh.transform = `translate(${sx(-.47)}px,${sy(P.A/2 - P.f)+P.A*w*.06 + P.drop*P.ppu}px)`;
+
+  // Ribbon shadow (#shadowRibbon)
+  const shRibbon = $('#shadowRibbon').style;
+  shRibbon.width = w*.94+'px';
+  shRibbon.height = (P.f * w)*.95+'px';
+  shRibbon.transform = `translate(${sx(-.47)}px,${sy(P.A/2)+P.A*w*.02}px)`;
+
   const fr = (P.front-P.org), tc = $('#trace').style;
   tc.left = ((Math.min(P.org,P.front)+.48)*w)+'px'; tc.width = (state()==='pack' ? Math.abs(fr)*w : 0)+'px';
+}
+
+/* =====================================================================
+   🎯 CARD START-OF-TEAR POSITION — derived from the pack's real on-screen
+   rect, so the card always begins *inside* the pack on any screen size.
+   Writes --startX / --startY / --startS on #cardWrap; the CSS state rules
+   for [data-state=cut] and [data-state=rise] consume them.
+   ===================================================================== */
+function measureCardStart(){
+  if(!PK) return;
+  const P = PK, cw = $('#cardWrap');
+  const cwPx   = cw.offsetWidth || 1;      // card's layout width in CSS px
+  const packPx = P.ppu;                    // pack's rendered width in CSS px (world width 1 at z=0)
+  // scale so the card matches the pack width (slight inset so no corner peeks)
+  const s      = clamp((packPx / cwPx) * .96, .15, 1.4);
+  const cx     = sx(0);                    // pack centre x  (screen)
+  const cy     = sy(-P.f / 2);             // pack *body* centre y (screen, below the foil seam)
+  cw.style.setProperty('--startX', (cx - innerWidth  / 2) + 'px');
+  cw.style.setProperty('--startY', (cy - innerHeight / 2) + 'px');
+  cw.style.setProperty('--startS', s);
 }
 
 /* =====================================================================
@@ -750,7 +801,7 @@ function drawRays(now){
     const al = k*b.a*fl*.65; // High brightness
     const spread = len*.09*(.5 + b.a);
     const currentHue = (b.hue + t * 50) % 360;
-for(const s of [1]){
+    for(const s of [1]){
       const aa = s === 1 ? al : al*.55;
       rc.save(); rc.translate(ox, ys); rc.rotate(ang); rc.scale(1, s);
       const g = rc.createLinearGradient(0, 0, 0, -len);
@@ -814,7 +865,7 @@ addEventListener('pointerdown', e => {
   if(state() === 'loading') return;
   
   if(state() === 'idle'){
-    if(!canOpen) return; // Prevent clicking before prompt appears
+    if(!canOpen) return;
     PK.zT = CONFIG.zoom; PK.cyT = PK.A/2 - PK.f - .1; setState('zoom'); later(() => setState('pack'), 1000); return;
   }
   if(state() === 'pack'){
@@ -856,18 +907,25 @@ addEventListener('pointercancel', release);
 
 function cut(dir){
   if(state() !== 'pack') return;
-  const P = PK; drag = null; P.dragging = false; P.dir = dir; P.cutting = true; P.front = P.org + dir*Math.max(CONFIG.tearAt, (P.front-P.org)*dir); P.tCut = performance.now();
-  const cw = $('#cardWrap'), cutS = sy(P.A/2-P.f), s0 = P.ppu*.9/cw.offsetWidth, top = cutS - P.A*P.ppu*.04;
+  const P = PK; drag = null; P.dragging = false; P.dir = dir; P.cutting = true;
+  P.front = P.org + dir*Math.max(CONFIG.tearAt, (P.front-P.org)*dir);
+  P.tCut = performance.now();
+
   build3D();
-  cw.style.setProperty('--s', s0); cw.style.setProperty('--x', '0px');
-  cw.style.setProperty('--y', (top + cw.offsetHeight*s0/2 - innerHeight/2)+'px');
-  setState('cut');
-  later(() => { P.tRev = performance.now(); }, 1000);
+  measureCardStart();                    // ← card now starts exactly where the pack is
+  setState('cut');                       // ① card parks inside the pack · flash + rays fire
+
+  /* ② card rises ▲ and wrapper drops ▼ — both start on this exact beat */
   later(() => {
-    ['--x','--y','--s'].forEach(p => cw.style.removeProperty(p));
-    setState('reveal');
-  }, 1000 + 1300);
-  later(() => setState('ready'), 1000 + 1300 + 1400 + CONFIG.nextButtonDelaySeconds*1000);
+    P.tRev = performance.now();          // wrapper starts falling (see tick)
+    setState('rise');                    // card starts rising (CSS transition)
+  }, OPEN.hold);
+
+  /* ③ only once the swap has finished does the card zoom to full size */
+  later(() => setState('reveal'), OPEN.hold + OPEN.rise);
+
+  /* ④ next button */
+  later(() => setState('ready'), OPEN.hold + OPEN.rise + OPEN.zoom + CONFIG.nextButtonDelaySeconds*1000);
 }
 
 const VERT = `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }`;
@@ -998,7 +1056,11 @@ $('#replay').addEventListener('click', () => {
   requestAnimationFrame(() => document.body.classList.remove('reset'));
 });
 
-addEventListener('resize', () => { sizeGL(); sizePack(); resizeConfetti(); updateCue(); });
+addEventListener('resize', () => {
+  sizeGL(); sizePack(); resizeConfetti(); updateCue();
+  // keep the card's parked position in sync while it is still hidden behind the pack
+  if(PK && (state() === 'pack' || state() === 'cut')) measureCardStart();
+});
 
 const T0 = performance.now();
 function tick(now){
@@ -1013,12 +1075,13 @@ function tick(now){
     if(P.cutting){
       P.fly = clamp01((now-P.tCut-200)/(CONFIG.ribbonFlySeconds*1000)); P.open = 1-Math.pow(1-clamp01((now-P.tCut)/450),3);
     } else if(!P.dragging){ P.front += (P.org-P.front)*.18; }
-    if(P.tRev){ const u = clamp01((now-P.tRev)/1100); P.drop = u*u*P.A*1.8; }
+    // wrapper fall — same length & smooth easing as the card rise
+    if(P.tRev){ const u = clamp01((now-P.tRev)/OPEN.rise); P.drop = u*u*(3-2*u)*P.A*1.8; }
     fu.uDir.value = P.dir; fu.uProg.value = clamp((P.front-P.org)*P.dir,0,1); fu.uFly.value = P.fly;
     const o = clamp01((P.fly-.62)/.38); fu.uOp.value = 1 - o*o*(3-2*o);
     P.bu.uOpen.value = P.open; P.bu.uTime.value = fu.uTime.value = t; P.body.position.y = -P.f/2 - P.drop;
     layoutUI(); drawRays(now); P.r.render(P.sc, P.cam);
-    if(P.tRev && now-P.tRev > 1300){ P.active = false; P.r.clear(); rc.clearRect(0,0,rc.canvas.width,rc.canvas.height); }
+    if(P.tRev && now-P.tRev > OPEN.rise + 250){ P.active = false; P.r.clear(); rc.clearRect(0,0,rc.canvas.width,rc.canvas.height); }
   }
   if(trailLife > 0){ trailLife--; tc.globalCompositeOperation = 'destination-out'; tc.shadowBlur = 0; tc.fillStyle = 'rgba(0,0,0,.14)'; tc.fillRect(0,0,innerWidth,innerHeight); }
   if(three){
